@@ -1,8 +1,10 @@
+// lib/screens/farmer_dashboard.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../models/Milk_predictor.dart';
 
 class FarmerDashboard extends StatelessWidget {
   final String farmerId;
@@ -76,6 +78,182 @@ class FarmerDashboard extends StatelessWidget {
               style: TextStyle(
                 color: Colors.grey.shade600,
                 fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Prediction loading state
+  Widget _buildPredictionLoading() {
+    return Column(
+      children: [
+        _buildSkeletonPredictionCard(),
+        const SizedBox(height: 12),
+        _buildSkeletonPredictionCard(),
+        const SizedBox(height: 12),
+        _buildSkeletonPredictionCard(),
+        const SizedBox(height: 12),
+        _buildSkeletonPredictionCard(),
+      ],
+    );
+  }
+
+  Widget _buildSkeletonPredictionCard() {
+    return Card(
+      color: Colors.grey.shade100,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: const Padding(
+        padding: EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(backgroundColor: Colors.grey, radius: 20),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height: 16,
+                    child: LinearProgressIndicator(),
+                  ),
+                  SizedBox(height: 8),
+                  SizedBox(
+                    height: 12,
+                    child: LinearProgressIndicator(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Prediction error state
+  Widget _buildPredictionError(String error) {
+    return Card(
+      color: Colors.orange.shade50,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.orange.shade600, size: 40),
+            const SizedBox(height: 8),
+            Text(
+              "Predictions Unavailable",
+              style: TextStyle(
+                color: Colors.orange.shade800,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "Check your connection and try again",
+              style: TextStyle(color: Colors.orange.shade600),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Prediction card builder
+  Widget _buildPredictionCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required String trend,
+    required IconData icon,
+    required Color color,
+  }) {
+    Color trendColor;
+    IconData trendIcon;
+    
+    switch (trend) {
+      case 'growing':
+        trendColor = Colors.green;
+        trendIcon = Icons.trending_up;
+        break;
+      case 'declining':
+        trendColor = Colors.red;
+        trendIcon = Icons.trending_down;
+        break;
+      default:
+        trendColor = Colors.grey;
+        trendIcon = Icons.trending_flat;
+    }
+
+    return Card(
+      color: color.withOpacity(0.05),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: color.withOpacity(0.2), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                      Icon(trendIcon, color: trendColor, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        trend.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: trendColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -690,6 +868,85 @@ class FarmerDashboard extends StatelessWidget {
                       value: "KES ${pendingTotal.toStringAsFixed(0)}",
                       subtitle: "Awaiting clearance",
                       color: Colors.orange,
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 🔮 Advanced Prediction Cards
+                    const Text(
+                      "Production Forecast",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "AI-powered predictions based on your historical data",
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    FutureBuilder<Map<String, dynamic>>(
+                      future: MilkPredictor().predictMilkProduction(farmerId),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return _buildPredictionLoading();
+                        }
+                        
+                        if (snapshot.hasError) {
+                          return _buildPredictionError(snapshot.error.toString());
+                        }
+
+                        final predictions = snapshot.data!;
+                        final daily = predictions['daily'] as DailyPrediction;
+                        final weekly = predictions['weekly'] as WeeklyPrediction;
+                        final monthly = predictions['monthly'] as MonthlyPrediction;
+                        final yearly = predictions['yearly'] as YearlyPrediction;
+
+                        return Column(
+                          children: [
+                            _buildPredictionCard(
+                              title: "Tomorrow's Prediction",
+                              value: "${daily.prediction.toStringAsFixed(1)} L",
+                              subtitle: "Daily • ${(daily.confidence * 100).toStringAsFixed(0)}% confidence",
+                              trend: daily.trend,
+                              icon: Icons.today,
+                              color: Colors.blue,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildPredictionCard(
+                              title: "Next Week Forecast",
+                              value: "${weekly.prediction.toStringAsFixed(0)} L",
+                              subtitle: "Weekly • ${(weekly.confidence * 100).toStringAsFixed(0)}% confidence",
+                              trend: weekly.trend,
+                              icon: Icons.calendar_view_week,
+                              color: Colors.purple,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildPredictionCard(
+                              title: "Next Month Projection",
+                              value: "${monthly.prediction.toStringAsFixed(0)} L",
+                              subtitle: "Monthly • ${(monthly.confidence * 100).toStringAsFixed(0)}% confidence",
+                              trend: monthly.trend,
+                              icon: Icons.calendar_month,
+                              color: Colors.orange,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildPredictionCard(
+                              title: "Annual Forecast",
+                              value: "${(yearly.prediction / 1000).toStringAsFixed(1)}K L",
+                              subtitle: "Yearly • ${(yearly.confidence * 100).toStringAsFixed(0)}% confidence",
+                              trend: yearly.trend,
+                              icon: Icons.analytics,
+                              color: Colors.green,
+                            ),
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
 
