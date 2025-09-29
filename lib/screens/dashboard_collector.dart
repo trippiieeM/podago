@@ -13,53 +13,108 @@ class CollectorDashboard extends StatefulWidget {
 
 class _CollectorDashboardState extends State<CollectorDashboard> {
   String? selectedFarmerId;
-  String? selectedFarmerName; // ✅ store farmer name too
+  String? selectedFarmerName;
   final TextEditingController quantityCtrl = TextEditingController();
   final TextEditingController notesCtrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _isSubmitting = false;
 
   Future<void> _logMilk() async {
-    if (selectedFarmerId == null || quantityCtrl.text.isEmpty) {
+    if (!_formKey.currentState!.validate()) return;
+    if (selectedFarmerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please select farmer and enter quantity"),
+          content: Text("Please select a farmer"),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
 
-    await FirebaseFirestore.instance.collection("milk_logs").add({
-      "farmerId": selectedFarmerId,
-      "farmerName": selectedFarmerName, // ✅ save name here
-      "quantity": double.tryParse(quantityCtrl.text) ?? 0,
-      "notes": notesCtrl.text,
-      "status": "pending",
-      "date": DateTime.now(),
-    });
+    setState(() => _isSubmitting = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Milk log saved successfully")),
-    );
+    try {
+      await FirebaseFirestore.instance.collection("milk_logs").add({
+        "farmerId": selectedFarmerId,
+        "farmerName": selectedFarmerName,
+        "quantity": double.tryParse(quantityCtrl.text) ?? 0,
+        "notes": notesCtrl.text.trim(),
+        "status": "pending",
+        "date": DateTime.now(),
+        "timestamp": FieldValue.serverTimestamp(),
+      });
 
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Milk collection logged successfully"),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Clear all form fields after successful submission
+      _clearForm();
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error saving milk log: ${e.toString()}"),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      setState(() => _isSubmitting = false);
+    }
+  }
+
+  void _clearForm() {
+    // Clear text controllers
     quantityCtrl.clear();
     notesCtrl.clear();
+    
+    // Reset dropdown selection
     setState(() {
       selectedFarmerId = null;
       selectedFarmerName = null;
+      _isSubmitting = false;
     });
+    
+    // Reset form validation state
+    _formKey.currentState?.reset();
+  }
+
+  String? _validateQuantity(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter quantity';
+    }
+    final quantity = double.tryParse(value);
+    if (quantity == null || quantity <= 0) {
+      return 'Please enter a valid quantity';
+    }
+    if (quantity > 1000) {
+      return 'Quantity seems unusually high';
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Collector Dashboard"),
-        backgroundColor: Colors.green,
+        title: const Text(
+          "Collector Dashboard",
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: Colors.blue[300],
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_add),
-            tooltip: "Register Farmer",
+            icon: const Icon(Icons.person_add_alt_rounded),
+            tooltip: "Register New Farmer",
             onPressed: () {
               Navigator.push(
                 context,
@@ -69,147 +124,449 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ---------- MILK INPUT FORM ----------
-            const Text("Select Farmer", style: TextStyle(fontSize: 16)),
-            const SizedBox(height: 8),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection("users")
-                  .where("role", isEqualTo: "farmer")
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const CircularProgressIndicator();
-                }
-
-                final farmers = snapshot.data!.docs;
-
-                return DropdownButtonFormField<String>(
-                  value: selectedFarmerId,
-                  hint: const Text("Choose farmer"),
-                  items: farmers.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final name = data['name'] ?? 'Unnamed Farmer';
-                    return DropdownMenuItem<String>(
-                      value: doc.id,
-                      child: Text(name),
-                      onTap: () {
-                        selectedFarmerName = name; // ✅ capture farmer name
-                      },
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      selectedFarmerId = value;
-                    });
-                  },
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
-                );
-              },
+      body: Column(
+        children: [
+          // Form Section - Fixed height that works
+          Container(
+            height: MediaQuery.of(context).size.height * 0.45, // Reduced height slightly
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: _buildCollectionForm(),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: quantityCtrl,
-              decoration: const InputDecoration(
-                labelText: "Quantity (Liters)",
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: notesCtrl,
-              decoration: const InputDecoration(
-                labelText: "Notes",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: _logMilk,
-              icon: const Icon(Icons.save),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              label: const Text("Save Milk Log"),
-            ),
-
-            const SizedBox(height: 30),
-            const Text(
-              "Today’s Collected Milk",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-
-            // ---------- TODAY’S LOGS LIST ----------
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("milk_logs")
-                    .where(
-                      "date",
-                      isGreaterThanOrEqualTo: DateTime(
-                        DateTime.now().year,
-                        DateTime.now().month,
-                        DateTime.now().day,
-                      ),
-                    )
-                    .orderBy("date", descending: true)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final logs = snapshot.data!.docs;
-                  if (logs.isEmpty) {
-                    return const Center(
-                      child: Text("No milk collected today yet."),
-                    );
-                  }
-
-                  return ListView.builder(
-                    itemCount: logs.length,
-                    itemBuilder: (context, index) {
-                      final log = logs[index].data() as Map<String, dynamic>;
-                      return Card(
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.local_drink,
-                            color: Colors.green,
-                          ),
-                          title: Text("${log['quantity']} Liters"),
-                          subtitle: Text(
-                            "Farmer: ${log['farmerName'] ?? 'Unknown'}\n"
-                            "Notes: ${log['notes'] ?? 'None'}",
-                          ),
-                          trailing: Text(
-                            DateFormat(
-                              'hh:mm a',
-                            ).format((log['date'] as Timestamp).toDate()),
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+          ),
+          
+          // Divider
+          Container(
+            height: 1,
+            color: Colors.grey[300],
+          ),
+          
+          // List Section - Takes remaining space
+          Expanded(
+            child: _buildCollectionList(),
+          ),
+        ],
       ),
-
-      // 🔽 Bottom Navigation
       bottomNavigationBar: const BottomNavBar(
         currentIndex: 0,
         role: "collector",
       ),
     );
+  }
+
+  Widget _buildCollectionForm() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.add_circle_outline_rounded,
+                    color: Colors.green[700],
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    "New Milk Collection",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Farmer Selection
+          _buildFarmerDropdown(),
+          const SizedBox(height: 16),
+          
+          // Quantity Input
+          TextFormField(
+            controller: quantityCtrl,
+            decoration: const InputDecoration(
+              labelText: "Quantity (Liters)",
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.scale_rounded),
+            ),
+            keyboardType: TextInputType.number,
+            validator: _validateQuantity,
+          ),
+          const SizedBox(height: 16),
+          
+          // Notes Input
+          TextFormField(
+            controller: notesCtrl,
+            decoration: const InputDecoration(
+              labelText: "Notes (Optional)",
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.note_add_outlined),
+            ),
+            maxLines: 2,
+          ),
+          const SizedBox(height: 20),
+          
+          // Action Buttons
+          Row(
+            children: [
+              // Clear Button
+              Expanded(
+                flex: 1,
+                child: OutlinedButton(
+                  onPressed: _isSubmitting ? null : _clearForm,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey[700],
+                    side: BorderSide(color: Colors.grey.shade400),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text("Clear"),
+                ),
+              ),
+              const SizedBox(width: 12),
+              
+              // Submit Button
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _logMilk,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[300],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          "Save Collection",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFarmerDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          "Select Farmer",
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection("users")
+              .where("role", isEqualTo: "farmer")
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Container(
+                height: 56,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Container(
+                height: 56,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Center(
+                  child: Text(
+                    "Error loading farmers",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              );
+            }
+
+            final farmers = snapshot.data!.docs;
+
+            return DropdownButtonFormField<String>(
+              value: selectedFarmerId,
+              hint: const Text("Choose farmer"),
+              items: farmers.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final name = data['name'] ?? 'Unnamed Farmer';
+                return DropdownMenuItem<String>(
+                  value: doc.id,
+                  child: Text(name),
+                  onTap: () {
+                    selectedFarmerName = name;
+                  },
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  selectedFarmerId = value;
+                });
+              },
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCollectionList() {
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(
+                  Icons.today_rounded,
+                  color: Colors.green[700],
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Today's Collections",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      "Recent milk collections",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // Content
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection("milk_logs")
+                .where(
+                  "date",
+                  isGreaterThanOrEqualTo: DateTime(
+                    DateTime.now().year,
+                    DateTime.now().month,
+                    DateTime.now().day,
+                  ),
+                )
+                .orderBy("date", descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
+
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return _buildEmptyState();
+              }
+
+              final logs = snapshot.data!.docs;
+              
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: logs.length,
+                itemBuilder: (context, index) {
+                  final log = logs[index].data() as Map<String, dynamic>;
+                  return _buildCollectionItem(log, index);
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCollectionItem(Map<String, dynamic> log, int index) {
+    final timestamp = (log['date'] as Timestamp).toDate();
+    final quantity = log['quantity'] ?? 0;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.green[50],
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            Icons.local_drink_rounded,
+            color: Colors.green[700],
+            size: 20,
+          ),
+        ),
+        title: Text(
+          "${quantity.toStringAsFixed(1)} Liters",
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              log['farmerName'] ?? 'Unknown Farmer',
+              style: const TextStyle(fontSize: 14),
+            ),
+            if (log['notes'] != null && log['notes'].isNotEmpty)
+              Text(
+                log['notes'],
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              DateFormat('hh:mm a').format(timestamp),
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              DateFormat('MMM dd').format(timestamp),
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 64,
+            color: Colors.grey[300],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            "No Collections Today",
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Milk collections will appear here",
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    // Clean up controllers
+    quantityCtrl.dispose();
+    notesCtrl.dispose();
+    super.dispose();
   }
 }

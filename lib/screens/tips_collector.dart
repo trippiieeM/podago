@@ -383,7 +383,7 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
             fontSize: 20,
           ),
         ),
-        backgroundColor: Colors.orange,
+        backgroundColor: Colors.blue.shade400,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
