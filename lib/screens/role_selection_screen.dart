@@ -2,24 +2,109 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
+import '../services/simple_storage_service.dart'; // Updated import
 
 class RoleSelectionScreen extends StatelessWidget {
-  const RoleSelectionScreen({super.key});
+  final User? user;
+  
+  const RoleSelectionScreen({super.key, this.user});
 
   Future<void> _selectRole(BuildContext context, String role) async {
-    final user = FirebaseAuth.instance.currentUser;
+    final currentUser = user ?? FirebaseAuth.instance.currentUser;
 
-    if (user == null) {
+    if (currentUser == null) {
       // Not logged in yet → Go to Login screen, pass role
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => LoginScreen(selectedRole: role),
-          fullscreenDialog: true,
         ),
       );
-    } else {
-      // Show loading indicator
+      return;
+    }
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // Save role to Firestore
+      await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).set({
+        'role': role,
+        'email': currentUser.email,
+        'lastRoleUpdate': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // ✅ Save to local storage based on role
+      if (role == 'farmer') {
+        await SimpleStorageService.savePinSession(
+          userId: currentUser.uid,
+          userName: currentUser.displayName ?? currentUser.email?.split('@').first ?? 'Farmer',
+          role: role,
+        );
+      } else {
+        await SimpleStorageService.saveFirebaseSession(
+          userId: currentUser.uid,
+          userEmail: currentUser.email ?? '',
+          role: role,
+        );
+      }
+      
+      print('💾 Role saved locally: $role');
+
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+
+      // AuthGate will automatically detect the local storage and redirect
+
+    } catch (e) {
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+      
+      // Show error
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update role: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  // Add logout functionality
+  Future<void> _logout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      // Show loading
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -28,40 +113,20 @@ class RoleSelectionScreen extends StatelessWidget {
         ),
       );
 
-      try {
-        // Already logged in → Save role directly
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'role': role,
-          'lastRoleUpdate': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-
-        // Close loading dialog
-        if (context.mounted) {
-          Navigator.pop(context);
-        }
-
-        // Redirect to dashboard based on role
-        if (role == 'farmer') {
-          Navigator.pushReplacementNamed(context, '/farmerDashboard');
-        } else {
-          Navigator.pushReplacementNamed(context, '/collectorDashboard');
-        }
-      } catch (e) {
-        // Close loading dialog
-        if (context.mounted) {
-          Navigator.pop(context);
-        }
-        
-        // Show error
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to update role: ${e.toString()}'),
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+      // ✅ Clear local storage
+      await SimpleStorageService.clearUserSession();
+      
+      // Sign out from Firebase
+      await FirebaseAuth.instance.signOut();
+      
+      // Close loading and navigate
+      if (context.mounted) {
+        Navigator.pop(context);
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          (route) => false,
+        );
       }
     }
   }
@@ -77,7 +142,7 @@ class RoleSelectionScreen extends StatelessWidget {
           child: Column(
             children: [
               // Header Section
-              _buildHeaderSection(),
+              _buildHeaderSection(context),
               const SizedBox(height: 48),
 
               // Role Selection Cards
@@ -92,7 +157,7 @@ class RoleSelectionScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderSection() {
+  Widget _buildHeaderSection(BuildContext context) {
     return Column(
       children: [
         const SizedBox(height: 20),
@@ -133,7 +198,9 @@ class RoleSelectionScreen extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          "Please select your role to continue",
+          user == null 
+            ? "Please select your role to continue"
+            : "Almost there! Please select your role",
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 16,
@@ -141,6 +208,28 @@ class RoleSelectionScreen extends StatelessWidget {
             height: 1.5,
           ),
         ),
+        if (user != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            "Logged in as: ${user!.email}",
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.green[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => _logout(context),
+            child: Text(
+              "Not ${user!.email}? Sign out",
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

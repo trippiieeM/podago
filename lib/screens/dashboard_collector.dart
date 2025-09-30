@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/bottom_nav_bar.dart';
 import 'register_farmer_screen.dart';
+import '../services/simple_storage_service.dart';
+import 'role_selection_screen.dart';
 
 class CollectorDashboard extends StatefulWidget {
   const CollectorDashboard({super.key});
@@ -18,6 +21,54 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
   final TextEditingController notesCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isSubmitting = false;
+
+  // Logout functionality
+  Future<void> _logout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Clear local storage
+      await SimpleStorageService.clearUserSession();
+      
+      // Sign out from Firebase
+      await FirebaseAuth.instance.signOut();
+      
+      // Close loading and navigate
+      if (context.mounted) {
+        Navigator.pop(context);
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          (route) => false,
+        );
+      }
+    }
+  }
 
   Future<void> _logMilk() async {
     if (!_formKey.currentState!.validate()) return;
@@ -112,6 +163,7 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
         backgroundColor: Colors.blue[300],
         elevation: 0,
         actions: [
+          // Register Farmer Button
           IconButton(
             icon: const Icon(Icons.person_add_alt_rounded),
             tooltip: "Register New Farmer",
@@ -122,13 +174,19 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
               );
             },
           ),
+          // Logout Button
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: "Logout",
+            onPressed: () => _logout(context),
+          ),
         ],
       ),
       body: Column(
         children: [
           // Form Section - Fixed height that works
           Container(
-            height: MediaQuery.of(context).size.height * 0.45, // Reduced height slightly
+            height: MediaQuery.of(context).size.height * 0.45,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: _buildCollectionForm(),
@@ -402,6 +460,16 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
                   ],
                 ),
               ),
+              // Quick logout option in the header
+              IconButton(
+                icon: Icon(
+                  Icons.logout,
+                  size: 18,
+                  color: Colors.grey[600],
+                ),
+                onPressed: () => _logout(context),
+                tooltip: "Logout",
+              ),
             ],
           ),
         ),
@@ -556,6 +624,12 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
               fontSize: 14,
               color: Colors.grey,
             ),
+          ),
+          const SizedBox(height: 20),
+          // Add logout option in empty state too
+          OutlinedButton(
+            onPressed: () => _logout(context),
+            child: const Text('Logout'),
           ),
         ],
       ),

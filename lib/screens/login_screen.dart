@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dashboard_farmer.dart';
 import 'dashboard_collector.dart';
+import '../services/simple_storage_service.dart'; // Add this import
 
 class LoginScreen extends StatefulWidget {
   final String? selectedRole;
@@ -41,6 +42,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (query.docs.isNotEmpty) {
         final farmerDoc = query.docs.first;
+        final farmerData = farmerDoc.data();
+        
+        // ✅ Save PIN-based session
+        await SimpleStorageService.savePinSession(
+          userId: farmerDoc.id,
+          userName: _nameController.text.trim(),
+          role: 'farmer',
+        );
         
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -108,6 +117,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final role = doc["role"];
       if (role == "collector") {
+        // ✅ Save Firebase Auth session
+        await SimpleStorageService.saveFirebaseSession(
+          userId: user.uid,
+          userEmail: user.email ?? '',
+          role: 'collector',
+        );
+        
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

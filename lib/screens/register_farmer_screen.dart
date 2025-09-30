@@ -135,7 +135,7 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
               color: Colors.white,
             ),
           ),
-          backgroundColor: Colors.green[700],
+          backgroundColor: Colors.blue[400],
           elevation: 0,
           iconTheme: const IconThemeData(color: Colors.white),
         ),
@@ -315,7 +315,7 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
+              backgroundColor: Colors.blue[400],
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
