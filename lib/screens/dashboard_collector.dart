@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
+
 import '../widgets/bottom_nav_bar.dart';
 import 'register_farmer_screen.dart';
 import '../services/simple_storage_service.dart';
 import 'role_selection_screen.dart';
+import '../services/offline_storage_service.dart';
+import '../services/connectivity_service.dart';
 
 class CollectorDashboard extends StatefulWidget {
   const CollectorDashboard({super.key});
@@ -21,55 +26,144 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
   final TextEditingController notesCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isSubmitting = false;
+  bool _isOnline = true;
+  int _pendingSyncCount = 0;
+  StreamSubscription? _connectivitySubscription;
+  List<Map<String, dynamic>> _farmersList = [];
 
-  // Logout functionality
-  Future<void> _logout(BuildContext context) async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
+  @override
+  void initState() {
+    super.initState();
+    _initializeConnectivity();
+    _checkPendingSyncs();
+    _loadFarmers();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
+  }
+
+  // Load farmers from Firestore
+  void _loadFarmers() {
+    FirebaseFirestore.instance
+        .collection("users")
+        .where("role", isEqualTo: "farmer")
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        setState(() {
+          _farmersList = snapshot.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return {
+              'id': doc.id,
+              'name': data['name'] ?? 'Unknown Farmer',
+              'data': data,
+            };
+          }).toList();
+        });
+      }
+    });
+  }
+
+  // Initialize connectivity monitoring
+  void _initializeConnectivity() async {
+    // Check initial connectivity
+    _isOnline = await ConnectivityService.isConnected();
+    
+    // Listen for connectivity changes
+    _connectivitySubscription = ConnectivityService.connectivityStream.listen(
+      (result) async {
+        final wasOnline = _isOnline;
+        _isOnline = result != ConnectivityResult.none;
+        
+        if (!wasOnline && _isOnline) {
+          // Just came online - sync pending logs
+          _syncPendingLogs();
+        }
+        
+        setState(() {});
+      },
     );
+  }
 
-    if (shouldLogout == true) {
-      // Show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
+  // Check for pending syncs
+  Future<void> _checkPendingSyncs() async {
+    _pendingSyncCount = await OfflineStorageService.getPendingLogsCount();
+    setState(() {});
+  }
+
+  // Sync pending logs when back online
+  Future<void> _syncPendingLogs() async {
+    try {
+      final pendingLogs = await OfflineStorageService.getPendingMilkLogs();
+      
+      if (pendingLogs.isEmpty) return;
+
+      // Show sync indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Syncing $_pendingSyncCount offline logs...'),
+          backgroundColor: Colors.blue,
+          behavior: SnackBarBehavior.floating,
         ),
       );
 
-      // Clear local storage
-      await SimpleStorageService.clearUserSession();
+      int successCount = 0;
       
-      // Sign out from Firebase
-      await FirebaseAuth.instance.signOut();
-      
-      // Close loading and navigate
-      if (context.mounted) {
-        Navigator.pop(context);
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-          (route) => false,
+      for (final log in pendingLogs) {
+        try {
+          // Ensure farmer name exists with fallback
+          final farmerName = log["farmerName"] ?? 'Unknown Farmer';
+          
+          // Convert offline log to Firestore format
+          final firestoreLog = {
+            "farmerId": log["farmerId"],
+            "farmerName": farmerName,
+            "quantity": log["quantity"],
+            "notes": log["notes"],
+            "status": "pending",
+            "date": DateTime.fromMillisecondsSinceEpoch(log["originalTimestamp"]),
+            "timestamp": FieldValue.serverTimestamp(),
+            "wasOffline": true,
+            "syncedAt": FieldValue.serverTimestamp(),
+          };
+
+          await FirebaseFirestore.instance.collection("milk_logs").add(firestoreLog);
+          await OfflineStorageService.removePendingMilkLog(log);
+          successCount++;
+        } catch (e) {
+          print('Failed to sync log: $e');
+        }
+      }
+
+      // Update pending count
+      await _checkPendingSyncs();
+
+      // Show sync result
+      if (successCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully synced $successCount logs'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sync failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
+  // Enhanced milk logging with offline support
   Future<void> _logMilk() async {
     if (!_formKey.currentState!.validate()) return;
     if (selectedFarmerId == null) {
@@ -86,25 +180,54 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
     setState(() => _isSubmitting = true);
 
     try {
-      await FirebaseFirestore.instance.collection("milk_logs").add({
+      // Get farmer name from the dropdown selection
+      final farmerName = selectedFarmerName ?? 'Unknown Farmer';
+      
+      final milkLog = {
         "farmerId": selectedFarmerId,
-        "farmerName": selectedFarmerName,
+        "farmerName": farmerName,
         "quantity": double.tryParse(quantityCtrl.text) ?? 0,
         "notes": notesCtrl.text.trim(),
-        "status": "pending",
-        "date": DateTime.now(),
-        "timestamp": FieldValue.serverTimestamp(),
-      });
+        "originalTimestamp": DateTime.now().millisecondsSinceEpoch,
+      };
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Milk collection logged successfully"),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (_isOnline) {
+        // Online - save directly to Firestore
+        await FirebaseFirestore.instance.collection("milk_logs").add({
+          ...milkLog,
+          "status": "pending",
+          "date": DateTime.now(),
+          "timestamp": FieldValue.serverTimestamp(),
+          "wasOffline": false,
+        });
 
-      // Clear all form fields after successful submission
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Milk collection logged successfully"),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        // Offline - save locally
+        await OfflineStorageService.saveMilkLogOffline(milkLog);
+        await _checkPendingSyncs();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Milk saved offline - will sync when online"),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+
+      // Clear form after successful submission
       _clearForm();
 
     } catch (e) {
@@ -119,19 +242,91 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
     }
   }
 
+  // View pending offline logs
+  void _viewPendingLogs() async {
+    final pendingLogs = await OfflineStorageService.getPendingMilkLogs();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pending Offline Logs'),
+        content: pendingLogs.isEmpty 
+            ? const Text('No pending offline logs')
+            : SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: pendingLogs.length,
+                  itemBuilder: (context, index) {
+                    final log = pendingLogs[index];
+                    final date = DateTime.fromMillisecondsSinceEpoch(log['originalTimestamp']);
+                    final farmerName = log['farmerName'] ?? 'Unknown Farmer';
+                    
+                    return ListTile(
+                      leading: const Icon(Icons.pending, color: Colors.orange),
+                      title: Text('${log['quantity']}L - $farmerName'),
+                      subtitle: Text(DateFormat('MMM dd, hh:mm a').format(date)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => _deletePendingLog(log),
+                      ),
+                    );
+                  },
+                ),
+              ),
+        actions: [
+          if (pendingLogs.isNotEmpty && _isOnline)
+            TextButton(
+              onPressed: _syncPendingLogs,
+              child: const Text('Sync Now'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Delete a pending log
+  void _deletePendingLog(Map<String, dynamic> log) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Pending Log?'),
+        content: const Text('This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete == true) {
+      await OfflineStorageService.removePendingMilkLog(log);
+      await _checkPendingSyncs();
+      if (context.mounted) {
+        Navigator.pop(context);
+        _viewPendingLogs();
+      }
+    }
+  }
+
   void _clearForm() {
-    // Clear text controllers
     quantityCtrl.clear();
     notesCtrl.clear();
-    
-    // Reset dropdown selection
     setState(() {
       selectedFarmerId = null;
       selectedFarmerName = null;
       _isSubmitting = false;
     });
-    
-    // Reset form validation state
     _formKey.currentState?.reset();
   }
 
@@ -151,74 +346,148 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Collector Dashboard",
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+    final isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+
+    return GestureDetector(
+      onTap: () {
+        FocusScope.of(context).unfocus();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  "Collector Dashboard",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    fontSize: 18,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _isOnline ? Colors.green : Colors.orange,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _isOnline ? 'Online' : 'Offline',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              
+              if (_pendingSyncCount > 0) ...[
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$_pendingSyncCount',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
+          backgroundColor: Colors.blue[300],
+          elevation: 0,
+          actions: [
+            if (_pendingSyncCount > 0)
+              IconButton(
+                icon: Badge(
+                  label: Text(
+                    '$_pendingSyncCount',
+                    style: const TextStyle(fontSize: 10),
+                  ),
+                  child: const Icon(Icons.cloud_upload, size: 22),
+                ),
+                tooltip: "View Pending Logs",
+                onPressed: _viewPendingLogs,
+              ),
+            IconButton(
+              icon: const Icon(Icons.person_add_alt_rounded, size: 22),
+              tooltip: "Register New Farmer",
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RegisterFarmerScreen()),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout, size: 22),
+              tooltip: "Logout",
+              onPressed: () => _logout(context),
+            ),
+          ],
         ),
-        backgroundColor: Colors.blue[300],
-        elevation: 0,
-        actions: [
-          // Register Farmer Button
-          IconButton(
-            icon: const Icon(Icons.person_add_alt_rounded),
-            tooltip: "Register New Farmer",
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const RegisterFarmerScreen()),
-              );
-            },
-          ),
-          // Logout Button
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: "Logout",
-            onPressed: () => _logout(context),
-          ),
-        ],
+        body: _buildBody(isKeyboardVisible),
+        bottomNavigationBar: isKeyboardVisible ? null : const BottomNavBar(
+          currentIndex: 0,
+          role: "collector",
+        ),
       ),
-      body: Column(
+    );
+  }
+
+  Widget _buildBody(bool isKeyboardVisible) {
+    return SafeArea(
+      bottom: false,
+      child: Column(
         children: [
-          // Form Section - Fixed height that works
-          Container(
-            height: MediaQuery.of(context).size.height * 0.45,
+          Expanded(
+            flex: isKeyboardVisible ? 7 : 5,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: _buildCollectionForm(),
             ),
           ),
           
-          // Divider
-          Container(
-            height: 1,
-            color: Colors.grey[300],
-          ),
-          
-          // List Section - Takes remaining space
-          Expanded(
-            child: _buildCollectionList(),
-          ),
+          if (!isKeyboardVisible) ...[
+            Container(
+              height: 1,
+              color: Colors.grey[300],
+            ),
+            
+            Expanded(
+              flex: 5,
+              child: _buildCollectionList(),
+            ),
+          ],
         ],
-      ),
-      bottomNavigationBar: const BottomNavBar(
-        currentIndex: 0,
-        role: "collector",
       ),
     );
   }
 
   Widget _buildCollectionForm() {
+    final isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+
     return Form(
       key: _formKey,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.only(bottom: 16),
             child: Row(
@@ -227,63 +496,74 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.green[50],
+                    color: _isOnline ? Colors.green[50] : Colors.orange[50],
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    Icons.add_circle_outline_rounded,
-                    color: Colors.green[700],
+                    _isOnline ? Icons.cloud_done : Icons.cloud_off,
+                    color: _isOnline ? Colors.green[700] : Colors.orange[700],
                     size: 20,
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    "New Milk Collection",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.green,
-                    ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isOnline ? "New Milk Collection" : "Offline Collection",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: _isOnline ? Colors.green : Colors.orange,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        _isOnline ? "Will save to cloud" : "Will save locally and sync later",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
           
-          // Farmer Selection
           _buildFarmerDropdown(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           
-          // Quantity Input
           TextFormField(
             controller: quantityCtrl,
             decoration: const InputDecoration(
               labelText: "Quantity (Liters)",
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.scale_rounded),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             ),
             keyboardType: TextInputType.number,
             validator: _validateQuantity,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           
-          // Notes Input
           TextFormField(
             controller: notesCtrl,
             decoration: const InputDecoration(
               labelText: "Notes (Optional)",
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.note_add_outlined),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             ),
-            maxLines: 2,
+            maxLines: isKeyboardVisible ? 1 : 2,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           
-          // Action Buttons
           Row(
             children: [
-              // Clear Button
               Expanded(
                 flex: 1,
                 child: OutlinedButton(
@@ -298,13 +578,12 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
               ),
               const SizedBox(width: 12),
               
-              // Submit Button
               Expanded(
                 flex: 2,
                 child: ElevatedButton(
                   onPressed: _isSubmitting ? null : _logMilk,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[300],
+                    backgroundColor: _isOnline ? Colors.blue[300] : Colors.orange,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -320,12 +599,25 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
                             valueColor: AlwaysStoppedAnimation(Colors.white),
                           ),
                         )
-                      : const Text(
-                          "Save Collection",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _isOnline ? Icons.cloud_upload : Icons.save,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                _isOnline ? "Save to Cloud" : "Save Offline",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                 ),
               ),
@@ -350,68 +642,95 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
           ),
         ),
         const SizedBox(height: 8),
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("users")
-              .where("role", isEqualTo: "farmer")
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Container(
-                height: 56,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return Container(
-                height: 56,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Center(
-                  child: Text(
-                    "Error loading farmers",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ),
-              );
-            }
-
-            final farmers = snapshot.data!.docs;
-
-            return DropdownButtonFormField<String>(
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade400),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: DropdownButton<String>(
               value: selectedFarmerId,
               hint: const Text("Choose farmer"),
-              items: farmers.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final name = data['name'] ?? 'Unnamed Farmer';
+              isExpanded: true,
+              underline: const SizedBox(), // Remove default underline
+              items: _farmersList.map((farmer) {
                 return DropdownMenuItem<String>(
-                  value: doc.id,
-                  child: Text(name),
-                  onTap: () {
-                    selectedFarmerName = name;
-                  },
+                  value: farmer['id'],
+                  child: Text(farmer['name']),
                 );
               }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  selectedFarmerId = value;
-                });
+              onChanged: (String? newValue) {
+                if (newValue != null) {
+                  // Find the selected farmer
+                  final selectedFarmer = _farmersList.firstWhere(
+                    (farmer) => farmer['id'] == newValue,
+                    orElse: () => _farmersList.first,
+                  );
+                  
+                  setState(() {
+                    selectedFarmerId = newValue;
+                    selectedFarmerName = selectedFarmer['name'];
+                  });
+                }
               },
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-            );
-          },
+            ),
+          ),
         ),
+        
+        // Alternative: Show message if no farmers
+        if (_farmersList.isEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade400),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.person_off_outlined,
+                  size: 40,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  "No farmers registered yet",
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  "Register a farmer first to log milk collections",
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RegisterFarmerScreen()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[300],
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text("Register Farmer"),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -419,7 +738,6 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
   Widget _buildCollectionList() {
     return Column(
       children: [
-        // Header
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
@@ -460,13 +778,17 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
                   ],
                 ),
               ),
-              // Quick logout option in the header
-              IconButton(
-                icon: Icon(
-                  Icons.logout,
-                  size: 18,
-                  color: Colors.grey[600],
+              if (_pendingSyncCount > 0 && _isOnline)
+                IconButton(
+                  icon: Badge(
+                    label: Text('$_pendingSyncCount'),
+                    child: const Icon(Icons.sync),
+                  ),
+                  onPressed: _syncPendingLogs,
+                  tooltip: "Sync Pending Logs",
                 ),
+              IconButton(
+                icon: const Icon(Icons.logout, size: 18),
                 onPressed: () => _logout(context),
                 tooltip: "Logout",
               ),
@@ -474,7 +796,6 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
           ),
         ),
         
-        // Content
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -520,6 +841,8 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
   Widget _buildCollectionItem(Map<String, dynamic> log, int index) {
     final timestamp = (log['date'] as Timestamp).toDate();
     final quantity = log['quantity'] ?? 0;
+    final wasOffline = log['wasOffline'] ?? false;
+    final farmerName = log['farmerName'] ?? 'Unknown Farmer';
     
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -540,26 +863,38 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: Colors.green[50],
+            color: wasOffline ? Colors.orange[50] : Colors.green[50],
             borderRadius: BorderRadius.circular(6),
           ),
           child: Icon(
-            Icons.local_drink_rounded,
-            color: Colors.green[700],
+            wasOffline ? Icons.cloud_done : Icons.local_drink_rounded,
+            color: wasOffline ? Colors.orange[700] : Colors.green[700],
             size: 20,
           ),
         ),
-        title: Text(
-          "${quantity.toStringAsFixed(1)} Liters",
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
+        title: Row(
+          children: [
+            Text(
+              "${quantity.toStringAsFixed(1)} Liters",
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (wasOffline) ...[
+              const SizedBox(width: 4),
+              Icon(
+                Icons.cloud_done,
+                size: 16,
+                color: Colors.orange[700],
+              ),
+            ],
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              log['farmerName'] ?? 'Unknown Farmer',
+              farmerName,
               style: const TextStyle(fontSize: 14),
             ),
             if (log['notes'] != null && log['notes'].isNotEmpty)
@@ -626,7 +961,12 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
             ),
           ),
           const SizedBox(height: 20),
-          // Add logout option in empty state too
+          if (_pendingSyncCount > 0 && _isOnline)
+            ElevatedButton.icon(
+              onPressed: _syncPendingLogs,
+              icon: const Icon(Icons.sync),
+              label: Text('Sync $_pendingSyncCount Pending Logs'),
+            ),
           OutlinedButton(
             onPressed: () => _logout(context),
             child: const Text('Logout'),
@@ -636,11 +976,48 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
     );
   }
 
-  @override
-  void dispose() {
-    // Clean up controllers
-    quantityCtrl.dispose();
-    notesCtrl.dispose();
-    super.dispose();
+  // Logout functionality
+  Future<void> _logout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: _pendingSyncCount > 0
+            ? Text('You have $_pendingSyncCount unsynced logs. Logout anyway?')
+            : const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      await SimpleStorageService.clearUserSession();
+      await FirebaseAuth.instance.signOut();
+      
+      if (context.mounted) {
+        Navigator.pop(context);
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          (route) => false,
+        );
+      }
+    }
   }
 }
