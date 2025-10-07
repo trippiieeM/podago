@@ -7,13 +7,66 @@ class FarmerSupportScreen extends StatelessWidget {
 
   const FarmerSupportScreen({super.key, required this.farmerId});
 
-  Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      throw 'Could not launch $url';
+  Future<void> _launchUrl(String url, BuildContext context) async {
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        // Show error message to user
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cannot open $url'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
+  }
+
+  // WhatsApp launch with proper formatting
+  Future<void> _launchWhatsApp(BuildContext context) async {
+    const phone = "254792746672"; // Kenyan number without +
+    const message = "Hello, I need support with my Podago account";
+    final url = "https://wa.me/$phone?text=${Uri.encodeComponent(message)}";
+    await _launchUrl(url, context);
+  }
+
+  // Phone call launch
+  Future<void> _launchPhoneCall(BuildContext context) async {
+    const phone = "+254792746672"; // International format with +
+    final url = "tel:$phone";
+    await _launchUrl(url, context);
+  }
+
+  // SMS launch
+  Future<void> _launchSMS(BuildContext context) async {
+    const phone = "+254792746672"; // International format with +
+    const message = "Hello, I need support with my Podago account";
+    final url = "sms:$phone?body=${Uri.encodeComponent(message)}";
+    await _launchUrl(url, context);
+  }
+
+  // Email launch
+  Future<void> _launchEmail(BuildContext context) async {
+    const email = "muchirimorris007@gmail.com";
+    const subject = "Support Request - Podago Farmer";
+    const body = "Hello Podago Support Team,\n\nI need assistance with:\n\n";
+    final url = "mailto:$email?subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}";
+    await _launchUrl(url, context);
   }
 
   Widget _buildSupportCard({
@@ -208,7 +261,7 @@ class FarmerSupportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickActions() {
+  Widget _buildQuickActions(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -228,7 +281,7 @@ class FarmerSupportScreen extends StatelessWidget {
                 icon: Icons.chat_bubble_outline,
                 label: "Live Chat",
                 color: Colors.green,
-                onTap: () => _launchUrl("https://wa.me/254700123456"),
+                onTap: () => _launchWhatsApp(context),
               ),
             ),
             const SizedBox(width: 12),
@@ -237,7 +290,7 @@ class FarmerSupportScreen extends StatelessWidget {
                 icon: Icons.phone_in_talk,
                 label: "Call Now",
                 color: Colors.blue,
-                onTap: () => _launchUrl("tel:0700123456"),
+                onTap: () => _launchPhoneCall(context),
               ),
             ),
           ],
@@ -373,7 +426,7 @@ class FarmerSupportScreen extends StatelessWidget {
             _buildInfoCard(),
 
             // Quick Actions
-            _buildQuickActions(),
+            _buildQuickActions(context),
             const SizedBox(height: 24),
 
             // Support Channels
@@ -392,9 +445,9 @@ class FarmerSupportScreen extends StatelessWidget {
               icon: Icons.phone,
               color: Colors.green,
               title: "Call Support",
-              subtitle: "0700 123 456",
+              subtitle: "+254 792 746 672",
               description: "Speak directly with our support team",
-              onTap: () => _launchUrl("tel:0700123456"),
+              onTap: () => _launchPhoneCall(context),
             ),
 
             // WhatsApp Support
@@ -402,9 +455,9 @@ class FarmerSupportScreen extends StatelessWidget {
               icon: Icons.chat,
               color: Colors.green,
               title: "WhatsApp Support",
-              subtitle: "+254 700 123 456",
+              subtitle: "+254 792 746 672",
               description: "Get instant messaging support",
-              onTap: () => _launchUrl("https://wa.me/254700123456"),
+              onTap: () => _launchWhatsApp(context),
             ),
 
             // Email Support
@@ -412,9 +465,9 @@ class FarmerSupportScreen extends StatelessWidget {
               icon: Icons.email,
               color: Colors.blue,
               title: "Email Support",
-              subtitle: "support@podago.com",
+              subtitle: "muchirimorris007@gmail.com",
               description: "Send us detailed queries",
-              onTap: () => _launchUrl("mailto:support@podago.com"),
+              onTap: () => _launchEmail(context),
             ),
 
             // SMS Support
@@ -422,9 +475,9 @@ class FarmerSupportScreen extends StatelessWidget {
               icon: Icons.sms,
               color: Colors.orange,
               title: "SMS Support",
-              subtitle: "0712 345 678",
+              subtitle: "+254 792 746 672",
               description: "Text us for quick assistance",
-              onTap: () => _launchUrl("sms:0712345678"),
+              onTap: () => _launchSMS(context),
             ),
 
             const SizedBox(height: 24),
@@ -474,7 +527,7 @@ class FarmerSupportScreen extends StatelessWidget {
       bottomNavigationBar: BottomNavBar(
         currentIndex: 3,
         role: "farmer",
-        farmerId: farmerId, // ✅ CORRECTED: Use farmerId directly, not widget.farmerId
+        farmerId: farmerId,
       ),
     );
   }

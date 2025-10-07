@@ -19,7 +19,7 @@ class CollectorSupportScreen extends StatelessWidget {
   Future<void> _launchEmail() async {
     final Uri emailLaunchUri = Uri(
       scheme: 'mailto',
-      path: 'support@milkcollector.com',
+      path: 'muchirimorris007@gmail.com',
       queryParameters: {
         'subject': 'Collector Support Request',
         'body': 'Hello Support Team,\n\nI need assistance with:',
@@ -34,7 +34,7 @@ class CollectorSupportScreen extends StatelessWidget {
   Future<void> _launchWhatsApp() async {
     final Uri whatsappLaunchUri = Uri(
       scheme: 'https',
-      path: 'wa.me/254712345678',
+      path: 'wa.me/254792746672',
       queryParameters: {
         'text': 'Hello! I need support with the Milk Collector app.',
       },
@@ -144,9 +144,9 @@ class CollectorSupportScreen extends StatelessWidget {
           icon: Icons.phone_rounded,
           title: "Call Support",
           subtitle: "Speak directly with our support team",
-          contact: "+254 712 345 678",
+          contact: "+254 792 746 672",
           color: Colors.blue,
-          onTap: () => _launchPhone("+254712345678"),
+          onTap: () => _launchPhone("+254792746672"),
         ),
         const SizedBox(height: 12),
 
@@ -155,7 +155,7 @@ class CollectorSupportScreen extends StatelessWidget {
           icon: Icons.chat_rounded,
           title: "WhatsApp",
           subtitle: "Quick chat support",
-          contact: "+254 712 345 678",
+          contact: "+254 792 746 672",
           color: Colors.green,
           onTap: _launchWhatsApp,
         ),
@@ -166,7 +166,7 @@ class CollectorSupportScreen extends StatelessWidget {
           icon: Icons.email_rounded,
           title: "Email Support",
           subtitle: "Send us detailed queries",
-          contact: "support@milkcollector.com",
+          contact: "muchirimorris007@gmail.com",
           color: Colors.orange,
           onTap: _launchEmail,
         ),
@@ -366,7 +366,7 @@ class CollectorSupportScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => _launchPhone("+254712345678"),
+              onPressed: () => _launchPhone("+254792746672"),
               icon: const Icon(Icons.emergency_rounded),
               label: const Text("Call Emergency Support"),
               style: ElevatedButton.styleFrom(
