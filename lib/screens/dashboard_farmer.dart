@@ -6,14 +6,16 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../models/Milk_predictor.dart';
-import '../services/simple_storage_service.dart'; // Updated import
+import '../services/simple_storage_service.dart';
 import 'role_selection_screen.dart';
+import 'feed_request_screen.dart';
 
 class FarmerDashboard extends StatelessWidget {
   final String farmerId;
 
   const FarmerDashboard({super.key, required this.farmerId});
 
+  // Helper method to get farmer name
   Future<String> _getFarmerName() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -47,7 +49,6 @@ class FarmerDashboard extends StatelessWidget {
     );
 
     if (shouldLogout == true) {
-      // Show loading
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -56,13 +57,9 @@ class FarmerDashboard extends StatelessWidget {
         ),
       );
 
-      // ✅ Clear local storage
       await SimpleStorageService.clearUserSession();
-      
-      // Sign out from Firebase
       await FirebaseAuth.instance.signOut();
       
-      // Close loading and navigate
       if (context.mounted) {
         Navigator.pop(context);
         Navigator.pushAndRemoveUntil(
@@ -74,6 +71,7 @@ class FarmerDashboard extends StatelessWidget {
     }
   }
 
+  // Loading state widget
   Widget _buildLoadingState() {
     return Center(
       child: Column(
@@ -101,6 +99,7 @@ class FarmerDashboard extends StatelessWidget {
     );
   }
 
+  // Error state widget
   Widget _buildErrorState(String error) {
     return Center(
       child: Padding(
@@ -313,6 +312,7 @@ class FarmerDashboard extends StatelessWidget {
     );
   }
 
+  // Summary card builder
   Widget _buildSummaryCard({
     required IconData icon,
     required String title,
@@ -397,6 +397,7 @@ class FarmerDashboard extends StatelessWidget {
     );
   }
 
+  // Milk record card builder
   Widget _buildMilkRecordCard(Map<String, dynamic> log, int index) {
     final date = (log["date"] as Timestamp).toDate();
     final quantity = (log['quantity'] ?? 0).toDouble();
@@ -542,6 +543,7 @@ class FarmerDashboard extends StatelessWidget {
     );
   }
 
+  // Info chip builder
   Widget _buildInfoChip(IconData icon, String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -571,6 +573,7 @@ class FarmerDashboard extends StatelessWidget {
     );
   }
 
+  // Chart builder
   Widget _buildChart(String farmerId) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -755,6 +758,149 @@ class FarmerDashboard extends StatelessWidget {
     );
   }
 
+  // Feed Request Card
+  Widget _buildFeedRequestCard(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('feed_requests')
+          .where('farmerId', isEqualTo: farmerId)
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        String status = 'No requests';
+        String statusText = 'Request feed when needed';
+        Color statusColor = Colors.grey;
+        IconData statusIcon = Icons.inventory_2_outlined;
+
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          final latestRequest = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+          final requestStatus = latestRequest['status'] ?? 'pending';
+          
+          switch (requestStatus) {
+            case 'pending':
+              status = 'Pending Review';
+              statusText = 'Your request is being processed';
+              statusColor = Colors.orange;
+              statusIcon = Icons.pending_actions;
+              break;
+            case 'approved':
+              status = 'Approved';
+              statusText = 'Feed will be delivered soon';
+              statusColor = Colors.green;
+              statusIcon = Icons.check_circle;
+              break;
+            case 'rejected':
+              status = 'Not Approved';
+              statusText = 'Contact cooperative for details';
+              statusColor = Colors.red;
+              statusIcon = Icons.cancel;
+              break;
+            case 'delivered':
+              status = 'Delivered';
+              statusText = 'Feed has been delivered';
+              statusColor = Colors.blue;
+              statusIcon = Icons.local_shipping;
+              break;
+          }
+        }
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FeedRequestScreen(farmerId: farmerId),
+              ),
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Material(
+              elevation: 3,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      statusColor.withOpacity(0.1),
+                      statusColor.withOpacity(0.05),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: statusColor.withOpacity(0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          statusIcon,
+                          color: statusColor,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'FEED REQUEST',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: statusColor,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              status,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: statusColor,
+                              ),
+                            ),
+                            Text(
+                              statusText,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        color: statusColor,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
@@ -774,7 +920,6 @@ class FarmerDashboard extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
         actions: [
-          // Logout button in app bar
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => _logout(context),
@@ -809,7 +954,7 @@ class FarmerDashboard extends StatelessWidget {
               double todayTotal = 0;
               double monthTotal = 0;
               double pendingTotal = 0;
-              const double pricePerLiter = 45;
+              const double pricePerLiter = 47;
 
               for (var doc in logs) {
                 final data = doc.data() as Map<String, dynamic>;
@@ -834,7 +979,7 @@ class FarmerDashboard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Welcome Header with logout option
+                    // Welcome Header
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(20),
@@ -893,7 +1038,6 @@ class FarmerDashboard extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          // Additional logout option in the welcome section
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
@@ -954,6 +1098,10 @@ class FarmerDashboard extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
 
+                    // NEW: Feed Request Card
+                    _buildFeedRequestCard(context),
+                    const SizedBox(height: 12),
+
                     // Summary Cards
                     Row(
                       children: [
@@ -987,7 +1135,7 @@ class FarmerDashboard extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
 
-                    // 🔮 Advanced Prediction Cards
+                    // Production Forecast
                     const Text(
                       "Production Forecast",
                       style: TextStyle(

@@ -13,7 +13,7 @@ class FarmerHistoryScreen extends StatefulWidget {
 }
 
 class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
-  final double pricePerLiter = 50.0; // KES per liter
+  final double pricePerLiter = 45.0; // KES per liter - Updated to match admin
   String _timeFilter = 'all'; // all, day, week, month, year
 
   /// --- Filter Helper ---
@@ -47,6 +47,121 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     }).toList();
   }
 
+  /// --- UPDATED: Fetch Payment Data from Admin System ---
+  Future<Map<String, dynamic>> _fetchPaymentData() async {
+    try {
+      print('🔄 Fetching payment data for farmer: ${widget.farmerId}');
+      
+      // Fetch ALL payments for this farmer (both milk payments and feed deductions)
+      final paymentsQuery = FirebaseFirestore.instance
+          .collection('payments')
+          .where('farmerId', isEqualTo: widget.farmerId)
+          .orderBy('createdAt', descending: true);
+
+      final paymentsSnapshot = await paymentsQuery.get();
+      print('📄 Found ${paymentsSnapshot.docs.length} total payment documents');
+
+      // Separate milk payments and feed deductions
+      final milkPayments = paymentsSnapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return data['type'] == 'milk_payment';
+      }).toList();
+
+      final feedDeductions = paymentsSnapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return data['type'] == 'feed_deduction' && data['status'] != 'processed';
+      }).toList();
+
+      // Also fetch milk logs to calculate current balance
+      final milkLogsQuery = FirebaseFirestore.instance
+          .collection('milk_logs')
+          .where('farmerId', isEqualTo: widget.farmerId)
+          .orderBy('date', descending: true);
+
+      final milkLogsSnapshot = await milkLogsQuery.get();
+
+      print('💰 Milk Payments: ${milkPayments.length}');
+      print('🌾 Feed Deductions: ${feedDeductions.length}');
+      print('🥛 Milk Logs: ${milkLogsSnapshot.docs.length}');
+
+      return {
+        'milkPayments': milkPayments,
+        'feedDeductions': feedDeductions,
+        'milkLogs': milkLogsSnapshot.docs,
+      };
+    } catch (error) {
+      print('❌ Error fetching payment data: $error');
+      return {
+        'milkPayments': [],
+        'feedDeductions': [],
+        'milkLogs': [],
+      };
+    }
+  }
+
+  /// --- UPDATED: Calculate Totals from Current Data ---
+  Map<String, double> _calculatePaymentTotals(Map<String, dynamic> paymentData) {
+    final milkPayments = paymentData['milkPayments'] as List<DocumentSnapshot>;
+    final feedDeductions = paymentData['feedDeductions'] as List<DocumentSnapshot>;
+    final milkLogs = paymentData['milkLogs'] as List<DocumentSnapshot>;
+
+    print('🧮 Calculating totals with:');
+    print('   Milk Payments: ${milkPayments.length}');
+    print('   Feed Deductions: ${feedDeductions.length}');
+    print('   Milk Logs: ${milkLogs.length}');
+
+    // Calculate total milk income from paid milk logs
+    double totalMilkIncome = milkLogs.fold(0.0, (sum, doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['status'] == 'paid') {
+        final amount = (data['quantity'] ?? 0).toDouble() * pricePerLiter;
+        return sum + amount;
+      }
+      return sum;
+    });
+
+    // If no paid milk logs found, use admin payment records as fallback
+    if (totalMilkIncome == 0 && milkPayments.isNotEmpty) {
+      print('⚠️ No paid milk logs found, using admin payment records');
+      totalMilkIncome = milkPayments.fold(0.0, (sum, doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return sum + (data['amount'] ?? 0.0);
+      });
+    }
+
+    // Calculate pending milk (unpaid milk logs)
+    double totalPendingMilk = milkLogs.fold(0.0, (sum, doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['status'] == 'pending') {
+        return sum + ((data['quantity'] ?? 0).toDouble() * pricePerLiter);
+      }
+      return sum;
+    });
+
+    // Calculate feed deductions
+    double totalFeedDeductions = feedDeductions.fold(0.0, (sum, doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final amount = data['amount'] ?? 0.0;
+      return sum + (amount < 0 ? amount.abs() : amount);
+    });
+
+    // Calculate net payable: (Paid milk + Pending milk) - Feed deductions
+    double netPayable = (totalMilkIncome + totalPendingMilk) - totalFeedDeductions;
+
+    print('🎯 FINAL TOTALS:');
+    print('   Milk Income: KES $totalMilkIncome');
+    print('   Pending Milk: KES $totalPendingMilk');
+    print('   Feed Deductions: KES $totalFeedDeductions');
+    print('   Net Payable: KES $netPayable');
+
+    return {
+      'totalMilkIncome': totalMilkIncome,
+      'totalPendingMilk': totalPendingMilk,
+      'totalFeedDeductions': totalFeedDeductions,
+      'netPayable': netPayable,
+    };
+  }
+
   /// --- States ---
   Widget _buildLoadingState() {
     return Center(
@@ -63,7 +178,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            'Loading Milk History',
+            'Loading Payment History',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey.shade700,
@@ -72,7 +187,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Fetching your delivery records...',
+            'Fetching your payment records...',
             style: TextStyle(
               color: Colors.grey.shade500,
             ),
@@ -96,7 +211,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Unable to Load History',
+              'Unable to Load Payment History',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -105,7 +220,9 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              error,
+              error.contains('index') 
+                ? 'Database is being set up. Please wait a few minutes and try again.'
+                : error,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade600,
@@ -120,8 +237,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green.shade600,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -148,14 +264,14 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.local_drink_outlined,
+                Icons.payments_outlined,
                 size: 60,
                 color: Colors.green.shade400,
               ),
             ),
             const SizedBox(height: 25),
             Text(
-              'No Milk Records Found',
+              'No Payment Records Found',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -164,7 +280,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Your milk delivery history will appear here\nonce you start delivering milk',
+              'Your payment history will appear here\nonce payments are processed by admin',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade600,
@@ -180,8 +296,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green.shade600,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -322,6 +437,136 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     );
   }
 
+  Widget _buildPaymentRecordCard(DocumentSnapshot doc, int index, String type) {
+    final data = doc.data() as Map<String, dynamic>;
+    final date = (data['createdAt'] ?? data['date'] as Timestamp).toDate();
+    final amount = (data['amount'] ?? 0).toDouble();
+    final description = data['description'] ?? '';
+    final status = data['status'] ?? 'completed';
+
+    final isDeduction = type == 'feed_deduction' || amount < 0;
+    final amountColor = isDeduction ? Colors.red : Colors.green;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Material(
+        elevation: 2,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200, width: 1),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isDeduction 
+                            ? Colors.red.shade50 
+                            : Colors.green.shade50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isDeduction ? Icons.shopping_bag : Icons.payments,
+                        color: isDeduction ? Colors.red.shade600 : Colors.green.shade600,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isDeduction ? 'Feed Deduction' : 'Milk Payment',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          Text(
+                            DateFormat('MMM dd, yyyy • hh:mm a').format(date),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: status == 'completed' || status == 'paid'
+                            ? Colors.green.shade50
+                            : Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: status == 'completed' || status == 'paid'
+                              ? Colors.green.shade200
+                              : Colors.orange.shade200,
+                        ),
+                      ),
+                      child: Text(
+                        status.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: status == 'completed' || status == 'paid'
+                              ? Colors.green.shade600
+                              : Colors.orange.shade600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _buildInfoChip(
+                      isDeduction ? Icons.remove : Icons.add,
+                      'KES ${amount.abs().toStringAsFixed(0)}',
+                      amountColor,
+                    ),
+                    const SizedBox(width: 8),
+                    if (description.isNotEmpty)
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            description,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade700,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMilkRecordCard(DocumentSnapshot doc, int index) {
     final data = doc.data() as Map<String, dynamic>;
     final date = (data["date"] as Timestamp).toDate();
@@ -352,11 +597,11 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: Colors.green.shade50,
+                        color: Colors.blue.shade50,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(Icons.local_drink,
-                          color: Colors.green.shade600, size: 18),
+                          color: Colors.blue.shade600, size: 18),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -379,17 +624,20 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
                         color: status == 'paid'
                             ? Colors.green.shade50
-                            : Colors.orange.shade50,
+                            : status == 'deducted'
+                            ? Colors.orange.shade50
+                            : Colors.grey.shade50,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: status == 'paid'
                               ? Colors.green.shade200
-                              : Colors.orange.shade200,
+                              : status == 'deducted'
+                              ? Colors.orange.shade200
+                              : Colors.grey.shade200,
                         ),
                       ),
                       child: Text(
@@ -399,7 +647,9 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                           fontWeight: FontWeight.bold,
                           color: status == 'paid'
                               ? Colors.green.shade600
-                              : Colors.orange.shade600,
+                              : status == 'deducted'
+                              ? Colors.orange.shade600
+                              : Colors.grey.shade600,
                         ),
                       ),
                     ),
@@ -412,7 +662,10 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                         '${quantity.toStringAsFixed(1)} L', Colors.blue.shade600),
                     const SizedBox(width: 8),
                     _buildInfoChip(Icons.attach_money,
-                        'KES ${amount.toStringAsFixed(0)}', Colors.green.shade600),
+                        'KES ${amount.toStringAsFixed(0)}', 
+                        status == 'paid' ? Colors.green.shade600 : 
+                        status == 'deducted' ? Colors.orange.shade600 : 
+                        Colors.grey.shade600),
                   ],
                 ),
                 if (notes.isNotEmpty && notes != 'No additional notes') ...[
@@ -425,8 +678,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.note,
-                            size: 12, color: Colors.grey.shade600),
+                        Icon(Icons.note, size: 12, color: Colors.grey.shade600),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -477,7 +729,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text("Milk Delivery History",
+        title: const Text("Payment & Delivery History",
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
@@ -490,117 +742,183 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
               tooltip: 'Refresh History'),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection("milk_logs")
-            .where("farmerId", isEqualTo: widget.farmerId)
-            .orderBy("date", descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: _fetchPaymentData(),
+        builder: (context, paymentSnapshot) {
+          if (paymentSnapshot.connectionState == ConnectionState.waiting) {
             return _buildLoadingState();
           }
-          if (snapshot.hasError) return _buildErrorState(snapshot.error.toString());
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return _buildEmptyState();
+          if (paymentSnapshot.hasError) {
+            return _buildErrorState(paymentSnapshot.error.toString());
           }
 
-          /// Apply filter
-          final filteredLogs = _applyFilter(snapshot.data!.docs);
+          final paymentData = paymentSnapshot.data ?? {
+            'milkPayments': [],
+            'feedDeductions': [],
+            'milkLogs': [],
+          };
 
-          if (filteredLogs.isEmpty) return _buildEmptyState();
+          final paymentTotals = _calculatePaymentTotals(paymentData);
 
-          /// Totals
-          double totalLiters = 0, totalPaid = 0, totalPending = 0;
-          for (var log in filteredLogs) {
-            final data = log.data() as Map<String, dynamic>;
-            final liters = (data["quantity"] ?? 0).toDouble();
-            totalLiters += liters;
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection("milk_logs")
+                .where("farmerId", isEqualTo: widget.farmerId)
+                .orderBy("date", descending: true)
+                .snapshots(),
+            builder: (context, milkSnapshot) {
+              if (milkSnapshot.connectionState == ConnectionState.waiting) {
+                return _buildLoadingState();
+              }
+              if (milkSnapshot.hasError) {
+                return _buildErrorState(milkSnapshot.error.toString());
+              }
+              if (!milkSnapshot.hasData || milkSnapshot.data!.docs.isEmpty) {
+                return _buildEmptyState();
+              }
 
-            if (data["status"] == "paid") {
-              totalPaid += liters * pricePerLiter;
-            } else {
-              totalPending += liters * pricePerLiter;
-            }
-          }
+              /// Apply filter to milk logs
+              final filteredLogs = _applyFilter(milkSnapshot.data!.docs);
 
-          return Column(
-            children: [
-              // Summary Section
-              Padding(
-                padding: const EdgeInsets.all(16),
+              if (filteredLogs.isEmpty) return _buildEmptyState();
+
+              /// Calculate milk delivery totals
+              double totalLiters = filteredLogs.fold(0.0, (sum, log) {
+                final data = log.data() as Map<String, dynamic>;
+                return sum + (data["quantity"] ?? 0).toDouble();
+              });
+
+              return SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
                 child: Column(
                   children: [
-                    _buildTimeFilter(),
-                    const SizedBox(height: 16),
-                    _buildSummaryCard(
-                      icon: Icons.local_drink,
-                      title: "TOTAL MILK DELIVERED",
-                      value: "${totalLiters.toStringAsFixed(1)} L",
-                      subtitle: "Across ${filteredLogs.length} deliveries",
-                      color: Colors.blue,
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildSummaryCard(
-                            icon: Icons.check_circle,
-                            title: "PAID AMOUNT",
-                            value: "KES ${totalPaid.toStringAsFixed(0)}",
-                            subtitle: "Completed payments",
+                    // Payment Summary Section
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          _buildTimeFilter(),
+                          const SizedBox(height: 16),
+                          _buildSummaryCard(
+                            icon: Icons.local_drink,
+                            title: "TOTAL MILK DELIVERED",
+                            value: "${totalLiters.toStringAsFixed(1)} L",
+                            subtitle: "Across ${filteredLogs.length} deliveries",
+                            color: Colors.blue,
+                          ),
+                          _buildSummaryCard(
+                            icon: Icons.payments,
+                            title: "TOTAL MILK INCOME",
+                            value: "KES ${paymentTotals['totalMilkIncome']!.toStringAsFixed(0)}",
+                            subtitle: "Paid milk payments",
                             color: Colors.green,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildSummaryCard(
-                            icon: Icons.pending,
-                            title: "PENDING",
-                            value: "KES ${totalPending.toStringAsFixed(0)}",
+                          _buildSummaryCard(
+                            icon: Icons.pending_actions,
+                            title: "PENDING MILK",
+                            value: "KES ${paymentTotals['totalPendingMilk']!.toStringAsFixed(0)}",
                             subtitle: "Awaiting payment",
                             color: Colors.orange,
                           ),
-                        ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildSummaryCard(
+                                  icon: Icons.shopping_bag,
+                                  title: "FEED DEDUCTIONS",
+                                  value: "KES ${paymentTotals['totalFeedDeductions']!.toStringAsFixed(0)}",
+                                  subtitle: "Total feed costs",
+                                  color: Colors.red,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildSummaryCard(
+                                  icon: Icons.account_balance_wallet,
+                                  title: "NET PAYABLE",
+                                  value: "KES ${paymentTotals['netPayable']!.toStringAsFixed(0)}",
+                                  subtitle: "After all deductions",
+                                  color: paymentTotals['netPayable']! >= 0 ? Colors.purple : Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Container(
+                      height: 1,
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      color: Colors.grey.shade200,
+                    ),
+
+                    // Payment History Section
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.payment, color: Colors.green.shade600, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            "PAYMENT HISTORY",
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade700,
+                                letterSpacing: 0.5),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Payment Records
+                    Column(
+                      children: [
+                        // Show milk payments from admin system
+                        ...paymentData['milkPayments'].map<Widget>((doc) => 
+                          _buildPaymentRecordCard(doc, 0, 'milk_payment')
+                        ).toList(),
+                        
+                        // Show feed deductions from admin system
+                        ...paymentData['feedDeductions'].map<Widget>((doc) => 
+                          _buildPaymentRecordCard(doc, 0, 'feed_deduction')
+                        ).toList(),
                       ],
                     ),
-                  ],
-                ),
-              ),
 
-              Container(
-                height: 1,
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                color: Colors.grey.shade200,
-              ),
-
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(Icons.history,
-                        color: Colors.green.shade600, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      "DELIVERY HISTORY (${filteredLogs.length})",
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade700,
-                          letterSpacing: 0.5),
+                    // Delivery History Section
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.history, color: Colors.blue.shade600, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            "DELIVERY HISTORY (${filteredLogs.length})",
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade700,
+                                letterSpacing: 0.5),
+                          ),
+                        ],
+                      ),
                     ),
+
+                    // Milk delivery records
+                    Column(
+                      children: filteredLogs.asMap().entries.map((entry) => 
+                        _buildMilkRecordCard(entry.value, entry.key)
+                      ).toList(),
+                    ),
+
+                    // Add some bottom padding to account for the navigation bar
+                    const SizedBox(height: 80),
                   ],
                 ),
-              ),
-
-              Expanded(
-                child: ListView.builder(
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: filteredLogs.length,
-                  itemBuilder: (context, index) =>
-                      _buildMilkRecordCard(filteredLogs[index], index),
-                ),
-              ),
-            ],
+              );
+            },
           );
         },
       ),
