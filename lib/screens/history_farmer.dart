@@ -186,28 +186,39 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     }
   }
 
-  /// --- UPDATED: Calculate Totals from Current Data ---
+  /// --- UPDATED: Calculate Totals - Deductions ONLY from Pending ---
   Map<String, double> _calculatePaymentTotals(Map<String, dynamic> paymentData) {
     final milkPayments = paymentData['milkPayments'] as List<DocumentSnapshot>;
     final feedDeductions = paymentData['feedDeductions'] as List<DocumentSnapshot>;
     final milkLogs = paymentData['milkLogs'] as List<DocumentSnapshot>;
 
-    print('🧮 Calculating totals with:');
+    print('🧮 Calculating totals - deductions ONLY from pending:');
     print('   Milk Payments: ${milkPayments.length}');
     print('   Feed Deductions: ${feedDeductions.length}');
     print('   Milk Logs: ${milkLogs.length}');
     print('   Current Price: KES $_pricePerLiter per liter');
 
-    // Calculate total milk income from paid milk logs
-    double totalMilkIncome = milkLogs.fold(0.0, (sum, doc) {
+    // Separate milk logs into paid and pending
+    final paidMilkLogs = milkLogs.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      if (data['status'] == 'paid') {
-        // Use stored price if available, otherwise use current price
-        final price = (data['pricePerLiter'] ?? _pricePerLiter).toDouble();
-        final amount = (data['quantity'] ?? 0).toDouble() * price;
-        return sum + amount;
-      }
-      return sum;
+      return data['status'] == 'paid';
+    }).toList();
+
+    final pendingMilkLogs = milkLogs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return data['status'] == 'pending';
+    }).toList();
+
+    print('   Paid Milk Logs: ${paidMilkLogs.length}');
+    print('   Pending Milk Logs: ${pendingMilkLogs.length}');
+
+    // Calculate total milk income from paid milk logs (NEVER TOUCHED BY DEDUCTIONS)
+    double totalMilkIncome = paidMilkLogs.fold(0.0, (sum, doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      // Use stored price if available, otherwise use current price
+      final price = (data['pricePerLiter'] ?? _pricePerLiter).toDouble();
+      final amount = (data['quantity'] ?? 0).toDouble() * price;
+      return sum + amount;
     });
 
     // If no paid milk logs found, use admin payment records as fallback
@@ -219,36 +230,57 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
       });
     }
 
-    // Calculate pending milk (unpaid milk logs) - always use current price
-    double totalPendingMilk = milkLogs.fold(0.0, (sum, doc) {
+    // Calculate pending milk value (unpaid milk logs) - always use current price
+    double totalPendingMilk = pendingMilkLogs.fold(0.0, (sum, doc) {
       final data = doc.data() as Map<String, dynamic>;
-      if (data['status'] == 'pending') {
-        return sum + ((data['quantity'] ?? 0).toDouble() * _pricePerLiter);
-      }
-      return sum;
+      return sum + ((data['quantity'] ?? 0).toDouble() * _pricePerLiter);
     });
 
-    // Calculate feed deductions
+    // Calculate total feed deductions
     double totalFeedDeductions = feedDeductions.fold(0.0, (sum, doc) {
       final data = doc.data() as Map<String, dynamic>;
       final amount = data['amount'] ?? 0.0;
       return sum + (amount < 0 ? amount.abs() : amount);
     });
 
-    // Calculate net payable: (Paid milk + Pending milk) - Feed deductions
-    double netPayable = (totalMilkIncome + totalPendingMilk) - totalFeedDeductions;
+    // **UPDATED DEDUCTION LOGIC: ONLY FROM PENDING, NEVER FROM PAID**
+    double deductionsAppliedToPending = 0.0;
+    double remainingPendingAfterDeductions = 0.0;
 
+    if (totalFeedDeductions > 0 && totalPendingMilk > 0) {
+      // Apply deductions ONLY to pending milk
+      if (totalFeedDeductions <= totalPendingMilk) {
+        // All deductions can be covered by pending milk
+        deductionsAppliedToPending = totalFeedDeductions;
+        remainingPendingAfterDeductions = totalPendingMilk - totalFeedDeductions;
+      } else {
+        // Deductions exceed pending milk - ONLY deduct up to pending amount
+        deductionsAppliedToPending = totalPendingMilk;
+        remainingPendingAfterDeductions = 0.0;
+      }
+    } else {
+      // No deductions or no pending milk
+      deductionsAppliedToPending = 0.0;
+      remainingPendingAfterDeductions = totalPendingMilk;
+    }
+
+    print('🎯 DEDUCTION BREAKDOWN (PENDING ONLY):');
+    print('   Total Feed Deductions: KES $totalFeedDeductions');
+    print('   Applied to Pending Milk: KES $deductionsAppliedToPending');
+    print('   Remaining Pending Milk: KES $remainingPendingAfterDeductions');
+    print('   Paid Milk (PROTECTED): KES $totalMilkIncome');
     print('🎯 FINAL TOTALS:');
     print('   Milk Income: KES $totalMilkIncome');
     print('   Pending Milk: KES $totalPendingMilk');
     print('   Feed Deductions: KES $totalFeedDeductions');
-    print('   Net Payable: KES $netPayable');
+    print('   Remaining Pending: KES $remainingPendingAfterDeductions');
 
     return {
       'totalMilkIncome': totalMilkIncome,
       'totalPendingMilk': totalPendingMilk,
       'totalFeedDeductions': totalFeedDeductions,
-      'netPayable': netPayable,
+      'remainingPendingAfterDeductions': remainingPendingAfterDeductions,
+      'deductionsAppliedToPending': deductionsAppliedToPending,
     };
   }
 
@@ -415,7 +447,61 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     required String value,
     required String subtitle,
     required Color color,
+    Map<String, double>? paymentTotals,
   }) {
+    // Special handling for remaining pending to show deduction breakdown
+    Widget? additionalInfo;
+    
+    if (title.contains("REMAINING PENDING") && paymentTotals != null) {
+      final deductionsToPending = paymentTotals['deductionsAppliedToPending'] ?? 0;
+      final originalPending = paymentTotals['totalPendingMilk'] ?? 0;
+      
+      if (deductionsToPending > 0) {
+        additionalInfo = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              'After KES ${deductionsToPending.toStringAsFixed(0)} in deductions',
+              style: TextStyle(
+                fontSize: 9,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            if (originalPending > 0)
+              Text(
+                'From KES ${originalPending.toStringAsFixed(0)} total pending',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.green.shade600,
+                ),
+              ),
+          ],
+        );
+      }
+    }
+
+    // Special handling for pending milk to show deduction impact
+    if (title.contains("PENDING MILK") && paymentTotals != null) {
+      final deductionsToPending = paymentTotals['deductionsAppliedToPending'] ?? 0;
+      
+      if (deductionsToPending > 0) {
+        additionalInfo = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              'KES ${deductionsToPending.toStringAsFixed(0)} will be used for deductions',
+              style: TextStyle(
+                fontSize: 9,
+                color: Colors.orange.shade600,
+              ),
+            ),
+          ],
+        );
+      }
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
@@ -472,6 +558,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                             fontSize: 11,
                             color: Colors.grey.shade600,
                           )),
+                      if (additionalInfo != null) additionalInfo,
                       if (title.contains("MILK"))
                         Text(
                           "@ KES $_pricePerLiter/L",
@@ -957,6 +1044,34 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                             ),
                           ),
 
+                          // Deduction Priority Info
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.security, color: Colors.green.shade700, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Deductions ONLY applied to pending milk. Paid amounts are protected.',
+                                    style: TextStyle(
+                                      color: Colors.green.shade800,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
                           // Payment Summary Section
                           Padding(
                             padding: const EdgeInsets.all(16),
@@ -975,7 +1090,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                                   icon: Icons.payments,
                                   title: "TOTAL MILK INCOME",
                                   value: "KES ${paymentTotals['totalMilkIncome']!.toStringAsFixed(0)}",
-                                  subtitle: "Paid milk payments",
+                                  subtitle: "Paid milk payments (protected)",
                                   color: Colors.green,
                                 ),
                                 _buildSummaryCard(
@@ -984,6 +1099,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                                   value: "KES ${paymentTotals['totalPendingMilk']!.toStringAsFixed(0)}",
                                   subtitle: "Awaiting payment",
                                   color: Colors.orange,
+                                  paymentTotals: paymentTotals,
                                 ),
                                 Row(
                                   children: [
@@ -1000,10 +1116,11 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                                     Expanded(
                                       child: _buildSummaryCard(
                                         icon: Icons.account_balance_wallet,
-                                        title: "NET PAYABLE",
-                                        value: "KES ${paymentTotals['netPayable']!.toStringAsFixed(0)}",
-                                        subtitle: "After all deductions",
-                                        color: paymentTotals['netPayable']! >= 0 ? Colors.purple : Colors.red,
+                                        title: "REMAINING PENDING",
+                                        value: "KES ${paymentTotals['remainingPendingAfterDeductions']!.toStringAsFixed(0)}",
+                                        subtitle: "After feed deductions",
+                                        color: Colors.purple,
+                                        paymentTotals: paymentTotals,
                                       ),
                                     ),
                                   ],
