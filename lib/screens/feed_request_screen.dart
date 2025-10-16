@@ -13,62 +13,167 @@ class FeedRequestScreen extends StatefulWidget {
 }
 
 class _FeedRequestScreenState extends State<FeedRequestScreen> {
-  final TextEditingController _quantityController = TextEditingController();
-  final TextEditingController _notesController = TextEditingController();
-  String _selectedFeedType = 'dairy_meal';
+  String _selectedFeedType = 'Dairy Meal';
+  double _selectedQuantity = 25.0;
   bool _isSubmitting = false;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _availableFeeds = [];
+  String _errorMessage = '';
 
-  // Feed type display names
-  final Map<String, String> _feedTypeNames = {
-    'dairy_meal': 'Dairy Meal',
-    'calf_feed': 'Calf Feed',
-    'mineral_supplement': 'Mineral Supplement',
-  };
+  // Predefined quantity options
+  final List<double> _quantityOptions = [25.0, 50.0, 70.0, 100.0, 150.0, 200.0, 300.0, 400.0, 500.0];
 
-  // Status colors
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-        return Colors.orange;
-      case 'approved':
-        return Colors.green;
-      case 'rejected':
-        return Colors.red;
-      case 'delivered':
-        return Colors.blue;
-      default:
-        return Colors.grey;
+  // Feed types that match the React app
+  final List<String> _feedTypes = [
+    'Dairy Meal',
+    'Pollard (Wheat Pollard)',
+    'Maize Germ', 
+    'Maize Bran',
+    'Wheat Bran',
+    'Cottonseed Cake',
+    'Sunflower Cake',
+    'Fish Meal',
+    'Soybean Meal',
+    'Molasses',
+    'Mineral Supplement',
+    'Salt',
+    'Lucerne Meal',
+    'Urea-Molasses Block',
+    'Yeast/Probiotic Additives',
+    'Protein Concentrate'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    print('FeedRequestScreen initialized with farmerId: ${widget.farmerId}');
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    try {
+      await _fetchAvailableFeeds();
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load data: $e';
+        _isLoading = false;
+      });
     }
   }
 
-  // Status icons
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'pending':
-        return Icons.pending_actions;
-      case 'approved':
-        return Icons.check_circle;
-      case 'rejected':
-        return Icons.cancel;
-      case 'delivered':
-        return Icons.local_shipping;
-      default:
-        return Icons.help_outline;
+  // Fetch available feeds from inventory
+  Future<void> _fetchAvailableFeeds() async {
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('feeds')
+          .get();
+
+      print('Fetched ${querySnapshot.docs.length} feeds');
+      
+      setState(() {
+        _availableFeeds = querySnapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'id': doc.id,
+            'name': data['name'] ?? '',
+            'type': data['type'] ?? '',
+            'quantity': (data['quantity'] ?? 0).toDouble(),
+            'availableQuantity': (data['availableQuantity'] ?? data['quantity'] ?? 0).toDouble(),
+            'reservedQuantity': (data['reservedQuantity'] ?? 0).toDouble(),
+            'unit': data['unit'] ?? 'kg',
+            'pricePerUnit': (data['pricePerUnit'] ?? 0).toDouble(),
+          };
+        }).toList();
+      });
+    } catch (e) {
+      print('Error fetching feeds: $e');
+      setState(() {
+        _errorMessage = 'Error loading feeds: $e';
+      });
     }
+  }
+
+  // Get stock status for a feed
+  Map<String, dynamic> _getStockStatus(Map<String, dynamic> feed) {
+    final quantity = feed['quantity'] ?? 0;
+    final reserved = feed['reservedQuantity'] ?? 0;
+    final available = quantity - reserved;
+    
+    if (available <= 0) {
+      return {'status': 'Out of Stock', 'class': 'out-of-stock', 'available': available};
+    } else if (available <= 10) {
+      return {'status': 'Low Stock', 'class': 'low-stock', 'available': available};
+    } else {
+      return {'status': 'In Stock', 'class': 'in-stock', 'available': available};
+    }
+  }
+
+  // Check if requested quantity is available
+  bool _isQuantityAvailable(double requestedQuantity) {
+    final selectedFeed = _availableFeeds.firstWhere(
+      (feed) => feed['type'] == _selectedFeedType,
+      orElse: () => {},
+    );
+
+    if (selectedFeed.isEmpty) return false;
+
+    final stockStatus = _getStockStatus(selectedFeed);
+    final available = stockStatus['available'] ?? 0;
+    
+    return available >= requestedQuantity;
+  }
+
+  // Get available quantity for selected feed
+  double _getAvailableQuantity() {
+    final selectedFeed = _availableFeeds.firstWhere(
+      (feed) => feed['type'] == _selectedFeedType,
+      orElse: () => {},
+    );
+
+    if (selectedFeed.isEmpty) return 0;
+
+    final stockStatus = _getStockStatus(selectedFeed);
+    return (stockStatus['available'] ?? 0).toDouble();
   }
 
   Future<void> _submitFeedRequest() async {
-    if (_quantityController.text.isEmpty) {
+    if (widget.farmerId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter quantity')),
+        const SnackBar(
+          content: Text('Error: Farmer ID not found'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    final quantity = double.tryParse(_quantityController.text);
-    if (quantity == null || quantity <= 0) {
+    // Check if feed type exists in inventory
+    final selectedFeed = _availableFeeds.firstWhere(
+      (feed) => feed['type'] == _selectedFeedType,
+      orElse: () => {},
+    );
+
+    if (selectedFeed.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid quantity')),
+        SnackBar(
+          content: Text('$_selectedFeedType is not available in inventory'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Check stock availability
+    if (!_isQuantityAvailable(_selectedQuantity)) {
+      final available = _getAvailableQuantity();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Insufficient stock! Only $available ${selectedFeed['unit']} available'),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
@@ -78,188 +183,244 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
     });
 
     try {
+      print('Submitting request for farmer: ${widget.farmerId}');
+      
       await FirebaseFirestore.instance.collection('feed_requests').add({
         'farmerId': widget.farmerId,
-        'feedType': _selectedFeedType,
-        'feedTypeName': _feedTypeNames[_selectedFeedType],
-        'quantity': quantity,
-        'notes': _notesController.text.trim(),
+        'feedType': _selectedFeedType.toLowerCase().replaceAll(' ', '_').replaceAll('/', '_').replaceAll('(', '').replaceAll(')', ''),
+        'feedTypeName': _selectedFeedType,
+        'quantity': _selectedQuantity,
+        'notes': '',
         'status': 'pending',
+        'cost': 0,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Feed request submitted successfully!'),
-            backgroundColor: Colors.green.shade600,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        
-        // Clear form after successful submission
-        _quantityController.clear();
-        _notesController.clear();
-        setState(() {
-          _selectedFeedType = 'dairy_meal';
-        });
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Feed request submitted successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      // Reset form
+      setState(() {
+        _selectedFeedType = 'Dairy Meal';
+        _selectedQuantity = 25.0;
+      });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error submitting request: ${e.toString()}'),
-            backgroundColor: Colors.red.shade600,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      print('Error submitting request: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-      }
+      setState(() {
+        _isSubmitting = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Request Feed'),
+          backgroundColor: Colors.green,
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading feed data...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_errorMessage.isNotEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Request Feed'),
+          backgroundColor: Colors.green,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              Text(
+                'Error',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  _errorMessage,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _initializeData,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Request Feed'),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
-        elevation: 0,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // New Request Section
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            // Stock Info
+            if (_availableFeeds.isNotEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '📦 Available Stock',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: _availableFeeds.take(4).map((feed) {
+                          final status = _getStockStatus(feed);
+                          return Chip(
+                            backgroundColor: _getStockColor(status['class']),
+                            label: Text(
+                              '${feed['type']}: ${status['available']}${feed['unit']}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _getStockTextColor(status['class']),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                ),
               ),
+
+            const SizedBox(height: 20),
+
+            // Request Form
+            Card(
+              elevation: 2,
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.add_circle_outline,
-                          color: Colors.green.shade600,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'New Feed Request',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
+                    const Text(
+                      'New Feed Request',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 20),
-                    
-                    // Feed type dropdown
+
+                    // Feed Type
+                    const Text('Feed Type', style: TextStyle(fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       value: _selectedFeedType,
-                      items: _feedTypeNames.entries.map((entry) {
+                      items: _feedTypes.map((type) {
                         return DropdownMenuItem(
-                          value: entry.key,
-                          child: Text(entry.value),
+                          value: type,
+                          child: Text(type),
                         );
                       }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedFeedType = value!;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'Feed Type',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey.shade50,
+                      onChanged: (value) => setState(() => _selectedFeedType = value!),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    
-                    // Quantity input
-                    TextFormField(
-                      controller: _quantityController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Quantity (kg)',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        suffixText: 'kg',
-                        filled: true,
-                        fillColor: Colors.grey.shade50,
-                      ),
+
+                    const SizedBox(height: 20),
+
+                    // Quantity Selection
+                    const Text('Quantity (kg)', style: TextStyle(fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: _quantityOptions.map((qty) {
+                        final isSelected = _selectedQuantity == qty;
+                        final isAvailable = _isQuantityAvailable(qty);
+                        return ChoiceChip(
+                          label: Text('${qty.toInt()} kg'),
+                          selected: isSelected,
+                          onSelected: isAvailable ? (selected) {
+                            if (selected) {
+                              setState(() => _selectedQuantity = qty);
+                            }
+                          } : null,
+                          selectedColor: Colors.green,
+                          disabledColor: Colors.grey.shade300,
+                          labelStyle: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: isSelected ? Colors.white : 
+                                  isAvailable ? Colors.black : Colors.grey,
+                          ),
+                        );
+                      }).toList(),
                     ),
-                    const SizedBox(height: 16),
-                    
-                    // Notes
-                    TextFormField(
-                      controller: _notesController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: 'Additional Notes (Optional)',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey.shade50,
+
+                    if (!_isQuantityAvailable(_selectedQuantity)) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Only ${_getAvailableQuantity()} kg available',
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
                       ),
-                    ),
+                    ],
+
                     const SizedBox(height: 24),
-                    
-                    // Submit button
+
+                    // Submit Button
                     SizedBox(
                       width: double.infinity,
-                      height: 50,
                       child: ElevatedButton(
-                        onPressed: _isSubmitting ? null : _submitFeedRequest,
+                        onPressed: _isSubmitting ? null : _canSubmit() ? _submitFeedRequest : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 2,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                         child: _isSubmitting
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
+                                child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.send, size: 18),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Submit Request',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
+                            : const Text(
+                                'SUBMIT REQUEST', 
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
                               ),
                       ),
                     ),
@@ -267,310 +428,202 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Request History Section
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                'Request History',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+            const Row(
+              children: [
+                Icon(Icons.history, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Request History',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-              ),
+              ],
             ),
             const SizedBox(height: 12),
-            
-            // Previous requests - SIMPLIFIED STREAM WITHOUT COMPLEX ERROR HANDLING
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('feed_requests')
-                    .where('farmerId', isEqualTo: widget.farmerId)
-                    .orderBy('createdAt', descending: true)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  // Show loading indicator
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
-                  }
 
-                  // Show error message
-                  if (snapshot.hasError) {
-                    return _buildErrorWidget(
-                      'Unable to Load Requests',
-                      'Please check your internet connection and try again.',
-                      Icons.wifi_off,
-                    );
-                  }
-                  
-                  // Check if we have data and it's not empty
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return _buildEmptyWidget();
-                  }
-                  
-                  final requests = snapshot.data!.docs;
-                  
-                  return ListView.separated(
-                    itemCount: requests.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      try {
-                        final request = requests[index].data() as Map<String, dynamic>;
-                        return _buildRequestCard(request, index);
-                      } catch (e) {
-                        // If individual card fails, show error card but don't break the list
-                        return _buildErrorCard('Failed to load request');
-                      }
-                    },
-                  );
-                },
-              ),
-            ),
+            // History List
+            _buildHistorySection(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildRequestCard(Map<String, dynamic> request, int index) {
-    try {
-      final feedType = request['feedTypeName'] ?? _feedTypeNames[request['feedType']] ?? 'Unknown';
-      final quantity = request['quantity']?.toString() ?? '0';
-      final status = request['status'] ?? 'pending';
-      final notes = request['notes']?.toString() ?? '';
-      
-      Timestamp? createdAt = request['createdAt'];
-      final date = createdAt != null ? createdAt.toDate() : DateTime.now();
-      
-      final statusColor = _getStatusColor(status);
-      final statusIcon = _getStatusIcon(status);
+  Widget _buildHistorySection() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('feed_requests')
+          .where('farmerId', isEqualTo: widget.farmerId)
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-      return Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Center(
+              child: Column(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      statusIcon,
-                      color: statusColor,
-                      size: 20,
+                  Icon(Icons.error_outline, size: 48, color: Colors.grey.shade400),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Error loading history',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.history_outlined, size: 48, color: Colors.grey.shade400),
+                  const SizedBox(height: 8),
+                  Text(
+                    'No requests yet',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$feedType • $quantity kg',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          DateFormat('MMM dd, yyyy • hh:mm a').format(date),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: statusColor.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Text(
-                      status.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: statusColor,
-                      ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Your requests will appear here',
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 12,
                     ),
                   ),
                 ],
               ),
-              if (notes.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
+            ),
+          );
+        }
+
+        final requests = snapshot.data!.docs;
+
+        return Column(
+          children: [
+            ...requests.map((doc) {
+              final request = doc.data() as Map<String, dynamic>;
+              return _buildHistoryCard(request);
+            }).toList(),
+            const SizedBox(height: 16), // Extra space at bottom
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHistoryCard(Map<String, dynamic> request) {
+    final feedType = request['feedTypeName'] ?? 'Unknown';
+    final quantity = request['quantity'] ?? 0;
+    final status = request['status'] ?? 'pending';
+    final date = request['createdAt'] != null 
+        ? (request['createdAt'] as Timestamp).toDate()
+        : DateTime.now();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            // Status indicator
+            Container(
+              width: 4,
+              height: 40,
+              decoration: BoxDecoration(
+                color: _getStatusColor(status),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 12),
+            
+            // Request details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$feedType • ${quantity}kg',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.note_outlined,
-                        size: 14,
-                        color: Colors.grey.shade600,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          notes,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 2),
+                  Text(
+                    DateFormat('MMM dd, yyyy • hh:mm a').format(date),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
+                ],
+              ),
+            ),
+            
+            // Status badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: _getStatusColor(status).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                status.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: _getStatusColor(status),
                 ),
-              ],
-            ],
-          ),
+              ),
+            ),
+          ],
         ),
-      );
-    } catch (e) {
-      return _buildErrorCard('Error loading request data');
+      ),
+    );
+  }
+
+  // Helper methods
+  Color _getStockColor(String statusClass) {
+    switch (statusClass) {
+      case 'out-of-stock': return Colors.red.shade100;
+      case 'low-stock': return Colors.orange.shade100;
+      case 'in-stock': return Colors.green.shade100;
+      default: return Colors.grey.shade100;
     }
   }
 
-  Widget _buildErrorCard(String message) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(
-              Icons.error_outline,
-              color: Colors.red.shade400,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Color _getStockTextColor(String statusClass) {
+    switch (statusClass) {
+      case 'out-of-stock': return Colors.red.shade700;
+      case 'low-stock': return Colors.orange.shade700;
+      case 'in-stock': return Colors.green.shade700;
+      default: return Colors.grey.shade700;
+    }
   }
 
-  Widget _buildErrorWidget(String title, String message, IconData icon) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 64,
-              color: Colors.orange.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-                height: 1.4,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {});
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending': return Colors.orange;
+      case 'approved': return Colors.green;
+      case 'rejected': return Colors.red;
+      case 'delivered': return Colors.blue;
+      default: return Colors.grey;
+    }
   }
 
-  Widget _buildEmptyWidget() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.inventory_2_outlined,
-            size: 64,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No Feed Requests',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Your feed requests will appear here',
-            style: TextStyle(
-              color: Colors.grey.shade500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _quantityController.dispose();
-    _notesController.dispose();
-    super.dispose();
+  bool _canSubmit() {
+    return _isQuantityAvailable(_selectedQuantity);
   }
 }
