@@ -28,6 +28,71 @@ class FarmerDashboard extends StatelessWidget {
     }
   }
 
+  // Helper method to get current milk price
+  Future<double> _getCurrentMilkPrice() async {
+    try {
+      print('🔄 Fetching current milk price from system configuration...');
+      
+      // Method 1: Get price from system configuration (primary source)
+      final priceConfig = await FirebaseFirestore.instance
+          .collection('system_config')
+          .doc('milk_price')
+          .get();
+
+      if (priceConfig.exists) {
+        final data = priceConfig.data() as Map<String, dynamic>?;
+        if (data != null && data.containsKey('pricePerLiter')) {
+          final price = (data['pricePerLiter'] ?? 45.0).toDouble();
+          print('✅ Milk price loaded from system config: KES $price');
+          return price;
+        }
+      }
+
+      // Method 2: Get the latest price used in recent payments
+      final recentPayments = await FirebaseFirestore.instance
+          .collection('payments')
+          .where('type', isEqualTo: 'milk_payment')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      if (recentPayments.docs.isNotEmpty) {
+        final paymentData = recentPayments.docs.first.data() as Map<String, dynamic>;
+        if (paymentData.containsKey('pricePerLiter')) {
+          final price = (paymentData['pricePerLiter'] ?? 45.0).toDouble();
+          print('✅ Milk price loaded from recent payment: KES $price');
+          return price;
+        }
+      }
+
+      // Method 3: Get price from recent milk logs
+      final recentMilkLogs = await FirebaseFirestore.instance
+          .collection('milk_logs')
+          .where('status', isEqualTo: 'paid')
+          .orderBy('date', descending: true)
+          .limit(1)
+          .get();
+
+      if (recentMilkLogs.docs.isNotEmpty) {
+        final milkData = recentMilkLogs.docs.first.data() as Map<String, dynamic>;
+        if (milkData.containsKey('pricePerLiter')) {
+          final price = (milkData['pricePerLiter'] ?? 45.0).toDouble();
+          print('✅ Milk price loaded from milk log: KES $price');
+          return price;
+        }
+      }
+
+      // Fallback to default price
+      print('ℹ️ Using default milk price: KES 45.0');
+      return 45.0;
+
+    } catch (error) {
+      print('❌ Error fetching milk price: $error');
+      print('ℹ️ Using fallback milk price: KES 45.0');
+      return 45.0;
+    }
+  }
+
   // Logout functionality
   Future<void> _logout(BuildContext context) async {
     final shouldLogout = await showDialog<bool>(
@@ -319,6 +384,7 @@ class FarmerDashboard extends StatelessWidget {
     required String value,
     required String subtitle,
     required Color color,
+    String? priceInfo,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -386,6 +452,15 @@ class FarmerDashboard extends StatelessWidget {
                           color: Colors.grey.shade600,
                         ),
                       ),
+                      if (priceInfo != null)
+                        Text(
+                          priceInfo,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade500,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -398,11 +473,13 @@ class FarmerDashboard extends StatelessWidget {
   }
 
   // Milk record card builder
-  Widget _buildMilkRecordCard(Map<String, dynamic> log, int index) {
+  Widget _buildMilkRecordCard(Map<String, dynamic> log, int index, double pricePerLiter) {
     final date = (log["date"] as Timestamp).toDate();
     final quantity = (log['quantity'] ?? 0).toDouble();
     final status = log['status'] ?? 'pending';
     final notes = log['notes'] ?? 'No additional notes';
+    final storedPrice = (log['pricePerLiter'] ?? pricePerLiter).toDouble();
+    final amount = quantity * storedPrice;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -458,6 +535,14 @@ class FarmerDashboard extends StatelessWidget {
                               color: Colors.grey.shade600,
                             ),
                           ),
+                          Text(
+                            'Price: KES $storedPrice/L',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.shade500,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -498,8 +583,8 @@ class FarmerDashboard extends StatelessWidget {
                     const SizedBox(width: 8),
                     _buildInfoChip(
                       Icons.attach_money,
-                      'KES ${(quantity * 45).toStringAsFixed(0)}',
-                      Colors.green.shade600,
+                      'KES ${amount.toStringAsFixed(0)}',
+                      status == 'paid' ? Colors.green.shade600 : Colors.orange.shade600,
                     ),
                   ],
                 ),
@@ -936,100 +1021,195 @@ class FarmerDashboard extends StatelessWidget {
 
           final farmerName = snapshot.data ?? "Farmer";
 
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection("milk_logs")
-                .where("farmerId", isEqualTo: farmerId)
-                .snapshots(),
-            builder: (context, logsSnapshot) {
-              if (logsSnapshot.connectionState == ConnectionState.waiting) {
-                return _buildLoadingState();
-              }
+          return FutureBuilder<double>(
+            future: _getCurrentMilkPrice(),
+            builder: (context, priceSnapshot) {
+              final pricePerLiter = priceSnapshot.data ?? 45.0;
 
-              if (logsSnapshot.hasError) {
-                return _buildErrorState(logsSnapshot.error.toString());
-              }
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection("milk_logs")
+                    .where("farmerId", isEqualTo: farmerId)
+                    .snapshots(),
+                builder: (context, logsSnapshot) {
+                  if (logsSnapshot.connectionState == ConnectionState.waiting) {
+                    return _buildLoadingState();
+                  }
 
-              final logs = logsSnapshot.data?.docs ?? [];
-              double todayTotal = 0;
-              double monthTotal = 0;
-              double pendingTotal = 0;
-              const double pricePerLiter = 47;
+                  if (logsSnapshot.hasError) {
+                    return _buildErrorState(logsSnapshot.error.toString());
+                  }
 
-              for (var doc in logs) {
-                final data = doc.data() as Map<String, dynamic>;
-                final date = (data["date"] as Timestamp).toDate();
-                final qty = (data["quantity"] ?? 0).toDouble();
-                final status = data["status"] ?? "pending";
+                  final logs = logsSnapshot.data?.docs ?? [];
+                  double todayTotal = 0;
+                  double monthTotal = 0;
+                  double pendingTotal = 0;
 
-                if (DateFormat("yyyy-MM-dd").format(date) ==
-                    DateFormat("yyyy-MM-dd").format(today)) {
-                  todayTotal += qty;
-                }
-                if (date.month == today.month && date.year == today.year) {
-                  monthTotal += qty;
-                }
-                if (status == "pending") {
-                  pendingTotal += qty * pricePerLiter;
-                }
-              }
+                  for (var doc in logs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final date = (data["date"] as Timestamp).toDate();
+                    final qty = (data["quantity"] ?? 0).toDouble();
+                    final status = data["status"] ?? "pending";
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Welcome Header
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.green.shade50,
-                            Colors.blue.shade50,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.green.shade100,
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                    if (DateFormat("yyyy-MM-dd").format(date) ==
+                        DateFormat("yyyy-MM-dd").format(today)) {
+                      todayTotal += qty;
+                    }
+                    if (date.month == today.month && date.year == today.year) {
+                      monthTotal += qty;
+                    }
+                    if (status == "pending") {
+                      // Use stored price if available, otherwise use current price
+                      final storedPrice = (data['pricePerLiter'] ?? pricePerLiter).toDouble();
+                      pendingTotal += qty * storedPrice;
+                    }
+                  }
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Welcome Header with Price Info
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.green.shade50,
+                                Colors.blue.shade50,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.green.shade100,
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade100,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.person,
-                                  color: Colors.green.shade600,
-                                ),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade100,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.person,
+                                      color: Colors.green.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Welcome back, $farmerName!",
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                        Text(
+                                          DateFormat("EEEE, MMMM dd, yyyy").format(today),
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.blue.shade200,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
+                                    Icon(
+                                      Icons.price_change,
+                                      size: 16,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                    const SizedBox(width: 8),
                                     Text(
-                                      "Welcome back, $farmerName!",
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
+                                      'Current Milk Price: KES $pricePerLiter per liter',
+                                      style: TextStyle(
+                                        color: Colors.blue.shade800,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
                                       ),
                                     ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade100,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.account_circle,
+                                      size: 16,
+                                      color: Colors.green.shade700,
+                                    ),
+                                    const SizedBox(width: 6),
                                     Text(
-                                      DateFormat("EEEE, MMMM dd, yyyy").format(today),
+                                      'Farmer Account',
                                       style: TextStyle(
-                                        color: Colors.grey.shade600,
+                                        fontSize: 12,
+                                        color: Colors.green.shade700,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    GestureDetector(
+                                      onTap: () => _logout(context),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.logout,
+                                              size: 12,
+                                              color: Colors.green.shade700,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Logout',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.green.shade700,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -1037,302 +1217,249 @@ class FarmerDashboard extends StatelessWidget {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade100,
-                              borderRadius: BorderRadius.circular(20),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // NEW: Feed Request Card
+                        _buildFeedRequestCard(context),
+                        const SizedBox(height: 12),
+
+                        // Summary Cards
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildSummaryCard(
+                                icon: Icons.today,
+                                title: "TODAY'S MILK",
+                                value: "${todayTotal.toStringAsFixed(1)} L",
+                                subtitle: "Daily delivery",
+                                color: Colors.blue,
+                                priceInfo: "@ KES $pricePerLiter/L",
+                              ),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildSummaryCard(
+                                icon: Icons.calendar_month,
+                                title: "THIS MONTH",
+                                value: "${monthTotal.toStringAsFixed(1)} L",
+                                subtitle: "Monthly total",
+                                color: Colors.purple,
+                                priceInfo: "@ KES $pricePerLiter/L",
+                              ),
+                            ),
+                          ],
+                        ),
+                        _buildSummaryCard(
+                          icon: Icons.payments,
+                          title: "PENDING PAYMENT",
+                          value: "KES ${pendingTotal.toStringAsFixed(0)}",
+                          subtitle: "Awaiting clearance",
+                          color: Colors.orange,
+                          priceInfo: "Based on current price",
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Production Forecast
+                        const Text(
+                          "Production Forecast",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "AI-powered predictions based on your historical data",
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        FutureBuilder<Map<String, dynamic>>(
+                          future: MilkPredictor().predictMilkProduction(farmerId),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return _buildPredictionLoading();
+                            }
+                            
+                            if (snapshot.hasError) {
+                              return _buildPredictionError(snapshot.error.toString());
+                            }
+
+                            final predictions = snapshot.data!;
+                            final daily = predictions['daily'] as DailyPrediction;
+                            final weekly = predictions['weekly'] as WeeklyPrediction;
+                            final monthly = predictions['monthly'] as MonthlyPrediction;
+                            final yearly = predictions['yearly'] as YearlyPrediction;
+
+                            return Column(
+                              children: [
+                                _buildPredictionCard(
+                                  title: "Tomorrow's Prediction",
+                                  value: "${daily.prediction.toStringAsFixed(1)} L",
+                                  subtitle: "Daily • ${(daily.confidence * 100).toStringAsFixed(0)}% confidence",
+                                  trend: daily.trend,
+                                  icon: Icons.today,
+                                  color: Colors.blue,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildPredictionCard(
+                                  title: "Next Week Forecast",
+                                  value: "${weekly.prediction.toStringAsFixed(0)} L",
+                                  subtitle: "Weekly • ${(weekly.confidence * 100).toStringAsFixed(0)}% confidence",
+                                  trend: weekly.trend,
+                                  icon: Icons.calendar_view_week,
+                                  color: Colors.purple,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildPredictionCard(
+                                  title: "Next Month Projection",
+                                  value: "${monthly.prediction.toStringAsFixed(0)} L",
+                                  subtitle: "Monthly • ${(monthly.confidence * 100).toStringAsFixed(0)}% confidence",
+                                  trend: monthly.trend,
+                                  icon: Icons.calendar_month,
+                                  color: Colors.orange,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildPredictionCard(
+                                  title: "Annual Forecast",
+                                  value: "${(yearly.prediction / 1000).toStringAsFixed(1)}K L",
+                                  subtitle: "Yearly • ${(yearly.confidence * 100).toStringAsFixed(0)}% confidence",
+                                  trend: yearly.trend,
+                                  icon: Icons.analytics,
+                                  color: Colors.green,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Milk Trends Chart
+                        const Text(
+                          "Milk Delivery Trends",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Last 7 days performance",
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildChart(farmerId),
+                        const SizedBox(height: 24),
+
+                        // Recent Deliveries
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.history,
+                              color: Colors.green.shade600,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              "RECENT DELIVERIES",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade700,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          "Latest milk delivery records",
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Milk Records List
+                        if (logs.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(40),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
                               children: [
                                 Icon(
-                                  Icons.account_circle,
-                                  size: 16,
-                                  color: Colors.green.shade700,
+                                  Icons.local_drink_outlined,
+                                  size: 64,
+                                  color: Colors.grey.shade400,
                                 ),
-                                const SizedBox(width: 6),
+                                const SizedBox(height: 16),
                                 Text(
-                                  'Farmer Account',
+                                  "No Milk Records Yet",
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.green.shade700,
-                                    fontWeight: FontWeight.w500,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey.shade600,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                GestureDetector(
-                                  onTap: () => _logout(context),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.logout,
-                                          size: 12,
-                                          color: Colors.green.shade700,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Logout',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.green.shade700,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  "Your milk delivery records will appear here",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          ...logs.take(5).map((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            final index = logs.indexOf(doc);
+                            return _buildMilkRecordCard(data, index, pricePerLiter);
+                          }).toList(),
+
+                        if (logs.length > 5) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  "And ${logs.length - 5} more deliveries",
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // NEW: Feed Request Card
-                    _buildFeedRequestCard(context),
-                    const SizedBox(height: 12),
-
-                    // Summary Cards
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildSummaryCard(
-                            icon: Icons.today,
-                            title: "TODAY'S MILK",
-                            value: "${todayTotal.toStringAsFixed(1)} L",
-                            subtitle: "Daily delivery",
-                            color: Colors.blue,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildSummaryCard(
-                            icon: Icons.calendar_month,
-                            title: "THIS MONTH",
-                            value: "${monthTotal.toStringAsFixed(1)} L",
-                            subtitle: "Monthly total",
-                            color: Colors.purple,
-                          ),
-                        ),
+                        const SizedBox(height: 20),
                       ],
                     ),
-                    _buildSummaryCard(
-                      icon: Icons.payments,
-                      title: "PENDING PAYMENT",
-                      value: "KES ${pendingTotal.toStringAsFixed(0)}",
-                      subtitle: "Awaiting clearance",
-                      color: Colors.orange,
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Production Forecast
-                    const Text(
-                      "Production Forecast",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "AI-powered predictions based on your historical data",
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    FutureBuilder<Map<String, dynamic>>(
-                      future: MilkPredictor().predictMilkProduction(farmerId),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return _buildPredictionLoading();
-                        }
-                        
-                        if (snapshot.hasError) {
-                          return _buildPredictionError(snapshot.error.toString());
-                        }
-
-                        final predictions = snapshot.data!;
-                        final daily = predictions['daily'] as DailyPrediction;
-                        final weekly = predictions['weekly'] as WeeklyPrediction;
-                        final monthly = predictions['monthly'] as MonthlyPrediction;
-                        final yearly = predictions['yearly'] as YearlyPrediction;
-
-                        return Column(
-                          children: [
-                            _buildPredictionCard(
-                              title: "Tomorrow's Prediction",
-                              value: "${daily.prediction.toStringAsFixed(1)} L",
-                              subtitle: "Daily • ${(daily.confidence * 100).toStringAsFixed(0)}% confidence",
-                              trend: daily.trend,
-                              icon: Icons.today,
-                              color: Colors.blue,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildPredictionCard(
-                              title: "Next Week Forecast",
-                              value: "${weekly.prediction.toStringAsFixed(0)} L",
-                              subtitle: "Weekly • ${(weekly.confidence * 100).toStringAsFixed(0)}% confidence",
-                              trend: weekly.trend,
-                              icon: Icons.calendar_view_week,
-                              color: Colors.purple,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildPredictionCard(
-                              title: "Next Month Projection",
-                              value: "${monthly.prediction.toStringAsFixed(0)} L",
-                              subtitle: "Monthly • ${(monthly.confidence * 100).toStringAsFixed(0)}% confidence",
-                              trend: monthly.trend,
-                              icon: Icons.calendar_month,
-                              color: Colors.orange,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildPredictionCard(
-                              title: "Annual Forecast",
-                              value: "${(yearly.prediction / 1000).toStringAsFixed(1)}K L",
-                              subtitle: "Yearly • ${(yearly.confidence * 100).toStringAsFixed(0)}% confidence",
-                              trend: yearly.trend,
-                              icon: Icons.analytics,
-                              color: Colors.green,
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Milk Trends Chart
-                    const Text(
-                      "Milk Delivery Trends",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Last 7 days performance",
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildChart(farmerId),
-                    const SizedBox(height: 24),
-
-                    // Recent Deliveries
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.history,
-                          color: Colors.green.shade600,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          "RECENT DELIVERIES",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey.shade700,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Latest milk delivery records",
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Milk Records List
-                    if (logs.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(40),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.local_drink_outlined,
-                              size: 64,
-                              color: Colors.grey.shade400,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              "No Milk Records Yet",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              "Your milk delivery records will appear here",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.grey.shade500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      ...logs.take(5).map((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        final index = logs.indexOf(doc);
-                        return _buildMilkRecordCard(data, index);
-                      }).toList(),
-
-                    if (logs.length > 5) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              "And ${logs.length - 5} more deliveries",
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                  ],
-                ),
+                  );
+                },
               );
             },
           );

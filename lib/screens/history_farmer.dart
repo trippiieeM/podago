@@ -13,8 +13,95 @@ class FarmerHistoryScreen extends StatefulWidget {
 }
 
 class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
-  final double pricePerLiter = 45.0; // KES per liter - Updated to match admin
+  double _pricePerLiter = 45.0; // Default price, will be updated from admin system
   String _timeFilter = 'all'; // all, day, week, month, year
+  bool _isLoadingPrice = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCurrentMilkPrice();
+  }
+
+  /// --- Fetch current milk price from admin system ---
+  Future<void> _fetchCurrentMilkPrice() async {
+    try {
+      print('🔄 Fetching current milk price from admin system...');
+      
+      // Method 1: Check if there's a price configuration in the database
+      final priceConfig = await FirebaseFirestore.instance
+          .collection('system_config')
+          .doc('milk_price')
+          .get();
+
+      if (priceConfig.exists) {
+        final data = priceConfig.data() as Map<String, dynamic>?;
+        if (data != null && data.containsKey('pricePerLiter')) {
+          setState(() {
+            _pricePerLiter = (data['pricePerLiter'] ?? 45.0).toDouble();
+            _isLoadingPrice = false;
+          });
+          print('✅ Milk price loaded from config: KES $_pricePerLiter');
+          return;
+        }
+      }
+
+      // Method 2: Get the latest price used in recent payments
+      final recentPayments = await FirebaseFirestore.instance
+          .collection('payments')
+          .where('type', isEqualTo: 'milk_payment')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      if (recentPayments.docs.isNotEmpty) {
+        final paymentData = recentPayments.docs.first.data() as Map<String, dynamic>;
+        if (paymentData.containsKey('pricePerLiter')) {
+          setState(() {
+            _pricePerLiter = (paymentData['pricePerLiter'] ?? 45.0).toDouble();
+            _isLoadingPrice = false;
+          });
+          print('✅ Milk price loaded from recent payment: KES $_pricePerLiter');
+          return;
+        }
+      }
+
+      // Method 3: Get price from recent milk logs
+      final recentMilkLogs = await FirebaseFirestore.instance
+          .collection('milk_logs')
+          .where('status', isEqualTo: 'paid')
+          .orderBy('date', descending: true)
+          .limit(1)
+          .get();
+
+      if (recentMilkLogs.docs.isNotEmpty) {
+        final milkData = recentMilkLogs.docs.first.data() as Map<String, dynamic>;
+        if (milkData.containsKey('pricePerLiter')) {
+          setState(() {
+            _pricePerLiter = (milkData['pricePerLiter'] ?? 45.0).toDouble();
+            _isLoadingPrice = false;
+          });
+          print('✅ Milk price loaded from milk log: KES $_pricePerLiter');
+          return;
+        }
+      }
+
+      // Fallback to default price
+      setState(() {
+        _pricePerLiter = 45.0;
+        _isLoadingPrice = false;
+      });
+      print('ℹ️ Using default milk price: KES $_pricePerLiter');
+
+    } catch (error) {
+      print('❌ Error fetching milk price: $error');
+      setState(() {
+        _pricePerLiter = 45.0;
+        _isLoadingPrice = false;
+      });
+      print('ℹ️ Using fallback milk price: KES $_pricePerLiter');
+    }
+  }
 
   /// --- Filter Helper ---
   List<DocumentSnapshot> _applyFilter(List<DocumentSnapshot> docs) {
@@ -109,12 +196,15 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     print('   Milk Payments: ${milkPayments.length}');
     print('   Feed Deductions: ${feedDeductions.length}');
     print('   Milk Logs: ${milkLogs.length}');
+    print('   Current Price: KES $_pricePerLiter per liter');
 
     // Calculate total milk income from paid milk logs
     double totalMilkIncome = milkLogs.fold(0.0, (sum, doc) {
       final data = doc.data() as Map<String, dynamic>;
       if (data['status'] == 'paid') {
-        final amount = (data['quantity'] ?? 0).toDouble() * pricePerLiter;
+        // Use stored price if available, otherwise use current price
+        final price = (data['pricePerLiter'] ?? _pricePerLiter).toDouble();
+        final amount = (data['quantity'] ?? 0).toDouble() * price;
         return sum + amount;
       }
       return sum;
@@ -129,11 +219,11 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
       });
     }
 
-    // Calculate pending milk (unpaid milk logs)
+    // Calculate pending milk (unpaid milk logs) - always use current price
     double totalPendingMilk = milkLogs.fold(0.0, (sum, doc) {
       final data = doc.data() as Map<String, dynamic>;
       if (data['status'] == 'pending') {
-        return sum + ((data['quantity'] ?? 0).toDouble() * pricePerLiter);
+        return sum + ((data['quantity'] ?? 0).toDouble() * _pricePerLiter);
       }
       return sum;
     });
@@ -186,12 +276,13 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Fetching your payment records...',
-            style: TextStyle(
-              color: Colors.grey.shade500,
+          if (_isLoadingPrice)
+            Text(
+              'Fetching current milk price...',
+              style: TextStyle(
+                color: Colors.grey.shade500,
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -231,7 +322,12 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
             ),
             const SizedBox(height: 25),
             ElevatedButton.icon(
-              onPressed: () => setState(() {}),
+              onPressed: () {
+                setState(() {
+                  _isLoadingPrice = true;
+                });
+                _fetchCurrentMilkPrice();
+              },
               icon: const Icon(Icons.refresh),
               label: const Text('Try Again'),
               style: ElevatedButton.styleFrom(
@@ -290,7 +386,12 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
             ),
             const SizedBox(height: 25),
             ElevatedButton.icon(
-              onPressed: () => setState(() {}),
+              onPressed: () {
+                setState(() {
+                  _isLoadingPrice = true;
+                });
+                _fetchCurrentMilkPrice();
+              },
               icon: const Icon(Icons.refresh),
               label: const Text('Refresh'),
               style: ElevatedButton.styleFrom(
@@ -371,6 +472,15 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                             fontSize: 11,
                             color: Colors.grey.shade600,
                           )),
+                      if (title.contains("MILK"))
+                        Text(
+                          "@ KES $_pricePerLiter/L",
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade500,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -443,6 +553,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     final amount = (data['amount'] ?? 0).toDouble();
     final description = data['description'] ?? '';
     final status = data['status'] ?? 'completed';
+    final priceUsed = (data['pricePerLiter'] ?? _pricePerLiter).toDouble();
 
     final isDeduction = type == 'feed_deduction' || amount < 0;
     final amountColor = isDeduction ? Colors.red : Colors.green;
@@ -500,6 +611,15 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                               color: Colors.grey.shade600,
                             ),
                           ),
+                          if (!isDeduction)
+                            Text(
+                              'Price: KES $priceUsed/L',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey.shade500,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -571,9 +691,12 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     final data = doc.data() as Map<String, dynamic>;
     final date = (data["date"] as Timestamp).toDate();
     final quantity = (data['quantity'] ?? 0).toDouble();
-    final amount = quantity * pricePerLiter;
     final status = data['status'] ?? 'pending';
     final notes = data['notes'] ?? 'No additional notes';
+    
+    // Use stored price if available, otherwise use current price
+    final price = (data['pricePerLiter'] ?? _pricePerLiter).toDouble();
+    final amount = quantity * price;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -618,6 +741,14 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey.shade600,
+                            ),
+                          ),
+                          Text(
+                            'Price: KES $price/L',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.shade500,
+                              fontStyle: FontStyle.italic,
                             ),
                           ),
                         ],
@@ -738,190 +869,224 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
         actions: [
           IconButton(
               icon: const Icon(Icons.refresh_rounded),
-              onPressed: () => setState(() {}),
+              onPressed: () {
+                setState(() {
+                  _isLoadingPrice = true;
+                });
+                _fetchCurrentMilkPrice();
+              },
               tooltip: 'Refresh History'),
         ],
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _fetchPaymentData(),
-        builder: (context, paymentSnapshot) {
-          if (paymentSnapshot.connectionState == ConnectionState.waiting) {
-            return _buildLoadingState();
-          }
-          if (paymentSnapshot.hasError) {
-            return _buildErrorState(paymentSnapshot.error.toString());
-          }
+      body: _isLoadingPrice 
+          ? _buildLoadingState()
+          : FutureBuilder<Map<String, dynamic>>(
+              future: _fetchPaymentData(),
+              builder: (context, paymentSnapshot) {
+                if (paymentSnapshot.connectionState == ConnectionState.waiting) {
+                  return _buildLoadingState();
+                }
+                if (paymentSnapshot.hasError) {
+                  return _buildErrorState(paymentSnapshot.error.toString());
+                }
 
-          final paymentData = paymentSnapshot.data ?? {
-            'milkPayments': [],
-            'feedDeductions': [],
-            'milkLogs': [],
-          };
+                final paymentData = paymentSnapshot.data ?? {
+                  'milkPayments': [],
+                  'feedDeductions': [],
+                  'milkLogs': [],
+                };
 
-          final paymentTotals = _calculatePaymentTotals(paymentData);
+                final paymentTotals = _calculatePaymentTotals(paymentData);
 
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection("milk_logs")
-                .where("farmerId", isEqualTo: widget.farmerId)
-                .orderBy("date", descending: true)
-                .snapshots(),
-            builder: (context, milkSnapshot) {
-              if (milkSnapshot.connectionState == ConnectionState.waiting) {
-                return _buildLoadingState();
-              }
-              if (milkSnapshot.hasError) {
-                return _buildErrorState(milkSnapshot.error.toString());
-              }
-              if (!milkSnapshot.hasData || milkSnapshot.data!.docs.isEmpty) {
-                return _buildEmptyState();
-              }
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection("milk_logs")
+                      .where("farmerId", isEqualTo: widget.farmerId)
+                      .orderBy("date", descending: true)
+                      .snapshots(),
+                  builder: (context, milkSnapshot) {
+                    if (milkSnapshot.connectionState == ConnectionState.waiting) {
+                      return _buildLoadingState();
+                    }
+                    if (milkSnapshot.hasError) {
+                      return _buildErrorState(milkSnapshot.error.toString());
+                    }
+                    if (!milkSnapshot.hasData || milkSnapshot.data!.docs.isEmpty) {
+                      return _buildEmptyState();
+                    }
 
-              /// Apply filter to milk logs
-              final filteredLogs = _applyFilter(milkSnapshot.data!.docs);
+                    /// Apply filter to milk logs
+                    final filteredLogs = _applyFilter(milkSnapshot.data!.docs);
 
-              if (filteredLogs.isEmpty) return _buildEmptyState();
+                    if (filteredLogs.isEmpty) return _buildEmptyState();
 
-              /// Calculate milk delivery totals
-              double totalLiters = filteredLogs.fold(0.0, (sum, log) {
-                final data = log.data() as Map<String, dynamic>;
-                return sum + (data["quantity"] ?? 0).toDouble();
-              });
+                    /// Calculate milk delivery totals
+                    double totalLiters = filteredLogs.fold(0.0, (sum, log) {
+                      final data = log.data() as Map<String, dynamic>;
+                      return sum + (data["quantity"] ?? 0).toDouble();
+                    });
 
-              return SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  children: [
-                    // Payment Summary Section
-                    Padding(
-                      padding: const EdgeInsets.all(16),
+                    return SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
                       child: Column(
                         children: [
-                          _buildTimeFilter(),
-                          const SizedBox(height: 16),
-                          _buildSummaryCard(
-                            icon: Icons.local_drink,
-                            title: "TOTAL MILK DELIVERED",
-                            value: "${totalLiters.toStringAsFixed(1)} L",
-                            subtitle: "Across ${filteredLogs.length} deliveries",
-                            color: Colors.blue,
+                          // Price Info Banner
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.blue.shade200),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.price_change, color: Colors.blue.shade700, size: 16),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Current Milk Price: KES $_pricePerLiter per liter',
+                                  style: TextStyle(
+                                    color: Colors.blue.shade800,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          _buildSummaryCard(
-                            icon: Icons.payments,
-                            title: "TOTAL MILK INCOME",
-                            value: "KES ${paymentTotals['totalMilkIncome']!.toStringAsFixed(0)}",
-                            subtitle: "Paid milk payments",
-                            color: Colors.green,
+
+                          // Payment Summary Section
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                _buildTimeFilter(),
+                                const SizedBox(height: 16),
+                                _buildSummaryCard(
+                                  icon: Icons.local_drink,
+                                  title: "TOTAL MILK DELIVERED",
+                                  value: "${totalLiters.toStringAsFixed(1)} L",
+                                  subtitle: "Across ${filteredLogs.length} deliveries",
+                                  color: Colors.blue,
+                                ),
+                                _buildSummaryCard(
+                                  icon: Icons.payments,
+                                  title: "TOTAL MILK INCOME",
+                                  value: "KES ${paymentTotals['totalMilkIncome']!.toStringAsFixed(0)}",
+                                  subtitle: "Paid milk payments",
+                                  color: Colors.green,
+                                ),
+                                _buildSummaryCard(
+                                  icon: Icons.pending_actions,
+                                  title: "PENDING MILK",
+                                  value: "KES ${paymentTotals['totalPendingMilk']!.toStringAsFixed(0)}",
+                                  subtitle: "Awaiting payment",
+                                  color: Colors.orange,
+                                ),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildSummaryCard(
+                                        icon: Icons.shopping_bag,
+                                        title: "FEED DEDUCTIONS",
+                                        value: "KES ${paymentTotals['totalFeedDeductions']!.toStringAsFixed(0)}",
+                                        subtitle: "Total feed costs",
+                                        color: Colors.red,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildSummaryCard(
+                                        icon: Icons.account_balance_wallet,
+                                        title: "NET PAYABLE",
+                                        value: "KES ${paymentTotals['netPayable']!.toStringAsFixed(0)}",
+                                        subtitle: "After all deductions",
+                                        color: paymentTotals['netPayable']! >= 0 ? Colors.purple : Colors.red,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                          _buildSummaryCard(
-                            icon: Icons.pending_actions,
-                            title: "PENDING MILK",
-                            value: "KES ${paymentTotals['totalPendingMilk']!.toStringAsFixed(0)}",
-                            subtitle: "Awaiting payment",
-                            color: Colors.orange,
+
+                          Container(
+                            height: 1,
+                            margin: const EdgeInsets.symmetric(horizontal: 20),
+                            color: Colors.grey.shade200,
                           ),
-                          Row(
+
+                          // Payment History Section
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(Icons.payment, color: Colors.green.shade600, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "PAYMENT HISTORY",
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey.shade700,
+                                      letterSpacing: 0.5),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Payment Records
+                          Column(
                             children: [
-                              Expanded(
-                                child: _buildSummaryCard(
-                                  icon: Icons.shopping_bag,
-                                  title: "FEED DEDUCTIONS",
-                                  value: "KES ${paymentTotals['totalFeedDeductions']!.toStringAsFixed(0)}",
-                                  subtitle: "Total feed costs",
-                                  color: Colors.red,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _buildSummaryCard(
-                                  icon: Icons.account_balance_wallet,
-                                  title: "NET PAYABLE",
-                                  value: "KES ${paymentTotals['netPayable']!.toStringAsFixed(0)}",
-                                  subtitle: "After all deductions",
-                                  color: paymentTotals['netPayable']! >= 0 ? Colors.purple : Colors.red,
-                                ),
-                              ),
+                              // Show milk payments from admin system
+                              ...paymentData['milkPayments'].map<Widget>((doc) => 
+                                _buildPaymentRecordCard(doc, 0, 'milk_payment')
+                              ).toList(),
+                              
+                              // Show feed deductions from admin system
+                              ...paymentData['feedDeductions'].map<Widget>((doc) => 
+                                _buildPaymentRecordCard(doc, 0, 'feed_deduction')
+                              ).toList(),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
 
-                    Container(
-                      height: 1,
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
-                      color: Colors.grey.shade200,
-                    ),
-
-                    // Payment History Section
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Icon(Icons.payment, color: Colors.green.shade600, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            "PAYMENT HISTORY",
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey.shade700,
-                                letterSpacing: 0.5),
+                          // Delivery History Section
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(Icons.history, color: Colors.blue.shade600, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "DELIVERY HISTORY (${filteredLogs.length})",
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey.shade700,
+                                      letterSpacing: 0.5),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
-                    ),
 
-                    // Payment Records
-                    Column(
-                      children: [
-                        // Show milk payments from admin system
-                        ...paymentData['milkPayments'].map<Widget>((doc) => 
-                          _buildPaymentRecordCard(doc, 0, 'milk_payment')
-                        ).toList(),
-                        
-                        // Show feed deductions from admin system
-                        ...paymentData['feedDeductions'].map<Widget>((doc) => 
-                          _buildPaymentRecordCard(doc, 0, 'feed_deduction')
-                        ).toList(),
-                      ],
-                    ),
-
-                    // Delivery History Section
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Icon(Icons.history, color: Colors.blue.shade600, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            "DELIVERY HISTORY (${filteredLogs.length})",
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey.shade700,
-                                letterSpacing: 0.5),
+                          // Milk delivery records
+                          Column(
+                            children: filteredLogs.asMap().entries.map((entry) => 
+                              _buildMilkRecordCard(entry.value, entry.key)
+                            ).toList(),
                           ),
+
+                          // Add some bottom padding to account for the navigation bar
+                          const SizedBox(height: 80),
                         ],
                       ),
-                    ),
-
-                    // Milk delivery records
-                    Column(
-                      children: filteredLogs.asMap().entries.map((entry) => 
-                        _buildMilkRecordCard(entry.value, entry.key)
-                      ).toList(),
-                    ),
-
-                    // Add some bottom padding to account for the navigation bar
-                    const SizedBox(height: 80),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ),
+                    );
+                  },
+                );
+              },
+            ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: 1,
         role: "farmer",
