@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'login_screen.dart';
-import '../services/simple_storage_service.dart'; // Updated import
+import 'package:podago/screens/auth/login_screen.dart';
+import 'package:podago/services/simple_storage_service.dart'; // Updated import
 
 class RoleSelectionScreen extends StatelessWidget {
   final User? user;

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dashboard_farmer.dart';
-import 'dashboard_collector.dart';
-import '../services/simple_storage_service.dart'; // Add this import
+import 'package:podago/screens/farmer/dashboard_farmer.dart';
+import 'package:podago/screens/collector/dashboard_collector.dart';
+import 'package:podago/services/simple_storage_service.dart'; // Add this import
 
 class LoginScreen extends StatefulWidget {
   final String? selectedRole;

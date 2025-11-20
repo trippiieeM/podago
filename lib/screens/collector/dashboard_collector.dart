@@ -5,12 +5,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:async';
 
-import '../widgets/bottom_nav_bar.dart';
-import 'register_farmer_screen.dart';
-import '../services/simple_storage_service.dart';
-import 'role_selection_screen.dart';
-import '../services/offline_storage_service.dart';
-import '../services/connectivity_service.dart';
+import 'package:podago/widgets/bottom_nav_bar.dart';
+import 'package:podago/screens/collector/register_farmer_screen.dart';
+import 'package:podago/services/simple_storage_service.dart';
+import 'package:podago/screens/auth/role_selection_screen.dart';
+import 'package:podago/services/offline_storage_service.dart';
+import 'package:podago/services/connectivity_service.dart';
 
 class CollectorDashboard extends StatefulWidget {
   const CollectorDashboard({super.key});

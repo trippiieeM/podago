@@ -4,11 +4,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../widgets/bottom_nav_bar.dart';
-import '../models/Milk_predictor.dart';
-import '../services/simple_storage_service.dart';
-import 'role_selection_screen.dart';
-import 'feed_request_screen.dart';
+
+// ✅ Correct package imports
+import 'package:podago/widgets/bottom_nav_bar.dart';
+import 'package:podago/models/Milk_predictor.dart';
+import 'package:podago/services/simple_storage_service.dart';
+import 'package:podago/screens/auth/role_selection_screen.dart';
+import 'package:podago/screens/farmer/feed_request_screen.dart';
 
 class FarmerDashboard extends StatelessWidget {
   final String farmerId;

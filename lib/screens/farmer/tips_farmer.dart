@@ -1,45 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../widgets/bottom_nav_bar.dart';
+import 'package:podago/widgets/bottom_nav_bar.dart';
 
-class CollectorTip {
-  final String id;
-  final String content;
-  final String role;
-  final DateTime createdAt;
-  final bool approved;
+class FarmerTipsScreen extends StatefulWidget {
+  final String farmerId;
 
-  CollectorTip({
-    required this.id,
-    required this.content,
-    required this.role,
-    required this.createdAt,
-    required this.approved,
-  });
-
-  factory CollectorTip.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    return CollectorTip(
-      id: doc.id,
-      content: data['content'] ?? '',
-      role: data['role'] ?? 'collector',
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      approved: data['approved'] ?? false,
-    );
-  }
-}
-
-class CollectorTipsScreen extends StatefulWidget {
-  const CollectorTipsScreen({super.key});
+  const FarmerTipsScreen({super.key, required this.farmerId});
 
   @override
-  State<CollectorTipsScreen> createState() => _CollectorTipsScreenState();
+  State<FarmerTipsScreen> createState() => _FarmerTipsScreenState();
 }
 
-class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
+class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  List<CollectorTip> tips = [];
+  List<Map<String, dynamic>> tips = [];
   bool isLoading = true;
   bool hasError = false;
 
@@ -53,12 +28,22 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
     try {
       QuerySnapshot snapshot = await _firestore
           .collection('tips')
-          .where('role', isEqualTo: 'collector')
+          .where('role', isEqualTo: 'farmer')
           .where('approved', isEqualTo: true)
           .orderBy('createdAt', descending: true)
           .get();
 
-      List<CollectorTip> fetchedTips = snapshot.docs.map((doc) => CollectorTip.fromFirestore(doc)).toList();
+      List<Map<String, dynamic>> fetchedTips = [];
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        if (data['content'] != null) {
+          fetchedTips.add({
+            'content': data['content'],
+            'createdAt': data['createdAt'],
+            'id': doc.id,
+          });
+        }
+      }
 
       setState(() {
         tips = fetchedTips;
@@ -66,7 +51,7 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
         hasError = false;
       });
     } catch (e) {
-      print('Error fetching collector tips: $e');
+      print('Error fetching tips: $e');
       setState(() {
         isLoading = false;
         hasError = true;
@@ -74,8 +59,12 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
     }
   }
 
-  String _formatDate(DateTime date) {
-    return DateFormat('MMM dd, yyyy • hh:mm a').format(date);
+  String _formatDate(Timestamp timestamp) {
+    try {
+      return DateFormat('MMM dd, yyyy • hh:mm a').format(timestamp.toDate());
+    } catch (e) {
+      return 'Recent';
+    }
   }
 
   Widget _buildLoadingState() {
@@ -88,12 +77,12 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
             height: 60,
             child: CircularProgressIndicator(
               strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade600),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
             ),
           ),
           const SizedBox(height: 20),
           Text(
-            'Loading Collection Tips',
+            'Loading Farming Tips',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey.shade700,
@@ -102,7 +91,7 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Getting the latest collection advice...',
+            'Getting the latest advice for you...',
             style: TextStyle(
               color: Colors.grey.shade500,
             ),
@@ -148,7 +137,7 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
               icon: const Icon(Icons.refresh),
               label: const Text('Try Again'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange.shade600,
+                backgroundColor: Colors.green.shade600,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -173,18 +162,18 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: Colors.orange.shade50,
+                color: Colors.green.shade50,
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.local_shipping,
+                Icons.lightbulb_outline,
                 size: 60,
-                color: Colors.orange.shade400,
+                color: Colors.green.shade400,
               ),
             ),
             const SizedBox(height: 25),
             Text(
-              'No Collection Tips Available',
+              'No Tips Available Yet',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -193,7 +182,7 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Check back later for expert collection advice\nand best practices',
+              'Check back later for expert farming advice\nand best practices',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade600,
@@ -207,7 +196,7 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
               icon: const Icon(Icons.refresh),
               label: const Text('Refresh'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange.shade600,
+                backgroundColor: Colors.green.shade600,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -221,7 +210,7 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
     );
   }
 
-  Widget _buildTipCard(CollectorTip tip, int index) {
+  Widget _buildTipCard(Map<String, dynamic> tip, int index) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Material(
@@ -233,13 +222,13 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.orange.shade50,
+                Colors.green.shade50,
                 Colors.white,
               ],
             ),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.orange.shade100,
+              color: Colors.green.shade100,
               width: 1,
             ),
           ),
@@ -257,14 +246,14 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            Colors.orange.shade400,
-                            Colors.orange.shade600,
+                            Colors.green.shade400,
+                            Colors.green.shade600,
                           ],
                         ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
-                        Icons.local_shipping,
+                        Icons.eco,
                         color: Colors.white,
                         size: 20,
                       ),
@@ -274,50 +263,18 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                'Tip ${index + 1}',
-                                style: TextStyle(
-                                  color: Colors.orange.shade600,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.green.shade200),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.verified,
-                                      size: 12,
-                                      color: Colors.green.shade600,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Approved',
-                                      style: TextStyle(
-                                        color: Colors.green.shade600,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          Text(
+                            'Tip ${index + 1}',
+                            style: TextStyle(
+                              color: Colors.green.shade600,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            tip.content,
+                            tip['content'],
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w500,
@@ -331,38 +288,24 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.access_time,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _formatDate(tip.createdAt),
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
+                if (tip['createdAt'] != null)
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 14,
+                        color: Colors.grey.shade500,
                       ),
-                    ),
-                    const Spacer(),
-                    Icon(
-                      Icons.fact_check,
-                      size: 14,
-                      color: Colors.orange.shade500,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Collection',
-                      style: TextStyle(
-                        color: Colors.orange.shade600,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                      const SizedBox(width: 6),
+                      Text(
+                        _formatDate(tip['createdAt'] as Timestamp),
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -377,13 +320,13 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: const Text(
-          "Collection Tips",
+          "Farming Tips",
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
         ),
-        backgroundColor: Colors.blue.shade400,
+        backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -412,8 +355,8 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  Colors.orange.shade100,
-                                  Colors.orange.shade50,
+                                  Colors.green.shade100,
+                                  Colors.green.shade50,
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(12),
@@ -424,11 +367,11 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
                                   width: 48,
                                   height: 48,
                                   decoration: BoxDecoration(
-                                    color: Colors.orange.shade600,
+                                    color: Colors.green.shade600,
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(
-                                    Icons.local_shipping,
+                                    Icons.agriculture,
                                     color: Colors.white,
                                     size: 24,
                                   ),
@@ -439,17 +382,17 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Expert Collection Advice',
+                                        'Expert Farming Advice',
                                         style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.orange.shade800,
+                                          color: Colors.green.shade800,
                                         ),
                                       ),
                                       Text(
-                                        '${tips.length} professional tips available',
+                                        '${tips.length} tips available',
                                         style: TextStyle(
-                                          color: Colors.orange.shade600,
+                                          color: Colors.green.shade600,
                                           fontSize: 14,
                                         ),
                                       ),
@@ -473,9 +416,10 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
                         ],
                       ),
                     ),
-      bottomNavigationBar: const BottomNavBar(
+      bottomNavigationBar: BottomNavBar(
         currentIndex: 2,
-        role: "collector",
+        role: "farmer",
+        farmerId: widget.farmerId,
       ),
     );
   }

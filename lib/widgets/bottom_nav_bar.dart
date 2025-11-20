@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import '../screens/dashboard_farmer.dart';
-import '../screens/dashboard_collector.dart';
-import '../screens/history_farmer.dart';
-import '../screens/history_collector.dart';
-import '../screens/tips_farmer.dart';
-import '../screens/tips_collector.dart';
-import '../screens/support_farmer.dart';
-import '../screens/support_collector.dart';
+import 'package:podago/screens/farmer/dashboard_farmer.dart';
+import 'package:podago/screens/collector/dashboard_collector.dart';
+import 'package:podago/screens/farmer/history_farmer.dart';
+import 'package:podago/screens/collector/history_collector.dart';
+import 'package:podago/screens/farmer/tips_farmer.dart';
+import 'package:podago/screens/collector/tips_collector.dart';
+import 'package:podago/screens/farmer/support_farmer.dart';
+import 'package:podago/screens/collector/support_collector.dart';
 
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;

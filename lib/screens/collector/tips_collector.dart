@@ -1,20 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../widgets/bottom_nav_bar.dart';
+import 'package:podago/widgets/bottom_nav_bar.dart';
 
-class FarmerTipsScreen extends StatefulWidget {
-  final String farmerId;
+class CollectorTip {
+  final String id;
+  final String content;
+  final String role;
+  final DateTime createdAt;
+  final bool approved;
 
-  const FarmerTipsScreen({super.key, required this.farmerId});
+  CollectorTip({
+    required this.id,
+    required this.content,
+    required this.role,
+    required this.createdAt,
+    required this.approved,
+  });
 
-  @override
-  State<FarmerTipsScreen> createState() => _FarmerTipsScreenState();
+  factory CollectorTip.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    return CollectorTip(
+      id: doc.id,
+      content: data['content'] ?? '',
+      role: data['role'] ?? 'collector',
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      approved: data['approved'] ?? false,
+    );
+  }
 }
 
-class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
+class CollectorTipsScreen extends StatefulWidget {
+  const CollectorTipsScreen({super.key});
+
+  @override
+  State<CollectorTipsScreen> createState() => _CollectorTipsScreenState();
+}
+
+class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  List<Map<String, dynamic>> tips = [];
+  List<CollectorTip> tips = [];
   bool isLoading = true;
   bool hasError = false;
 
@@ -28,22 +53,12 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
     try {
       QuerySnapshot snapshot = await _firestore
           .collection('tips')
-          .where('role', isEqualTo: 'farmer')
+          .where('role', isEqualTo: 'collector')
           .where('approved', isEqualTo: true)
           .orderBy('createdAt', descending: true)
           .get();
 
-      List<Map<String, dynamic>> fetchedTips = [];
-      for (var doc in snapshot.docs) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        if (data['content'] != null) {
-          fetchedTips.add({
-            'content': data['content'],
-            'createdAt': data['createdAt'],
-            'id': doc.id,
-          });
-        }
-      }
+      List<CollectorTip> fetchedTips = snapshot.docs.map((doc) => CollectorTip.fromFirestore(doc)).toList();
 
       setState(() {
         tips = fetchedTips;
@@ -51,7 +66,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
         hasError = false;
       });
     } catch (e) {
-      print('Error fetching tips: $e');
+      print('Error fetching collector tips: $e');
       setState(() {
         isLoading = false;
         hasError = true;
@@ -59,12 +74,8 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
     }
   }
 
-  String _formatDate(Timestamp timestamp) {
-    try {
-      return DateFormat('MMM dd, yyyy • hh:mm a').format(timestamp.toDate());
-    } catch (e) {
-      return 'Recent';
-    }
+  String _formatDate(DateTime date) {
+    return DateFormat('MMM dd, yyyy • hh:mm a').format(date);
   }
 
   Widget _buildLoadingState() {
@@ -77,12 +88,12 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
             height: 60,
             child: CircularProgressIndicator(
               strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade600),
             ),
           ),
           const SizedBox(height: 20),
           Text(
-            'Loading Farming Tips',
+            'Loading Collection Tips',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey.shade700,
@@ -91,7 +102,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Getting the latest advice for you...',
+            'Getting the latest collection advice...',
             style: TextStyle(
               color: Colors.grey.shade500,
             ),
@@ -137,7 +148,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
               icon: const Icon(Icons.refresh),
               label: const Text('Try Again'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade600,
+                backgroundColor: Colors.orange.shade600,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -162,18 +173,18 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: Colors.green.shade50,
+                color: Colors.orange.shade50,
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.lightbulb_outline,
+                Icons.local_shipping,
                 size: 60,
-                color: Colors.green.shade400,
+                color: Colors.orange.shade400,
               ),
             ),
             const SizedBox(height: 25),
             Text(
-              'No Tips Available Yet',
+              'No Collection Tips Available',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -182,7 +193,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Check back later for expert farming advice\nand best practices',
+              'Check back later for expert collection advice\nand best practices',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade600,
@@ -196,7 +207,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
               icon: const Icon(Icons.refresh),
               label: const Text('Refresh'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade600,
+                backgroundColor: Colors.orange.shade600,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -210,7 +221,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
     );
   }
 
-  Widget _buildTipCard(Map<String, dynamic> tip, int index) {
+  Widget _buildTipCard(CollectorTip tip, int index) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Material(
@@ -222,13 +233,13 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.green.shade50,
+                Colors.orange.shade50,
                 Colors.white,
               ],
             ),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.green.shade100,
+              color: Colors.orange.shade100,
               width: 1,
             ),
           ),
@@ -246,14 +257,14 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            Colors.green.shade400,
-                            Colors.green.shade600,
+                            Colors.orange.shade400,
+                            Colors.orange.shade600,
                           ],
                         ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
-                        Icons.eco,
+                        Icons.local_shipping,
                         color: Colors.white,
                         size: 20,
                       ),
@@ -263,18 +274,50 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Tip ${index + 1}',
-                            style: TextStyle(
-                              color: Colors.green.shade600,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                'Tip ${index + 1}',
+                                style: TextStyle(
+                                  color: Colors.orange.shade600,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.green.shade200),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.verified,
+                                      size: 12,
+                                      color: Colors.green.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Approved',
+                                      style: TextStyle(
+                                        color: Colors.green.shade600,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            tip['content'],
+                            tip.content,
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w500,
@@ -288,24 +331,38 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                if (tip['createdAt'] != null)
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 14,
-                        color: Colors.grey.shade500,
+                Row(
+                  children: [
+                    Icon(
+                      Icons.access_time,
+                      size: 14,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _formatDate(tip.createdAt),
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _formatDate(tip['createdAt'] as Timestamp),
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
-                        ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.fact_check,
+                      size: 14,
+                      color: Colors.orange.shade500,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Collection',
+                      style: TextStyle(
+                        color: Colors.orange.shade600,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -320,13 +377,13 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: const Text(
-          "Farming Tips",
+          "Collection Tips",
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.blue.shade400,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -355,8 +412,8 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  Colors.green.shade100,
-                                  Colors.green.shade50,
+                                  Colors.orange.shade100,
+                                  Colors.orange.shade50,
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(12),
@@ -367,11 +424,11 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                                   width: 48,
                                   height: 48,
                                   decoration: BoxDecoration(
-                                    color: Colors.green.shade600,
+                                    color: Colors.orange.shade600,
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(
-                                    Icons.agriculture,
+                                    Icons.local_shipping,
                                     color: Colors.white,
                                     size: 24,
                                   ),
@@ -382,17 +439,17 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Expert Farming Advice',
+                                        'Expert Collection Advice',
                                         style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade800,
+                                          color: Colors.orange.shade800,
                                         ),
                                       ),
                                       Text(
-                                        '${tips.length} tips available',
+                                        '${tips.length} professional tips available',
                                         style: TextStyle(
-                                          color: Colors.green.shade600,
+                                          color: Colors.orange.shade600,
                                           fontSize: 14,
                                         ),
                                       ),
@@ -416,10 +473,9 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                         ],
                       ),
                     ),
-      bottomNavigationBar: BottomNavBar(
+      bottomNavigationBar: const BottomNavBar(
         currentIndex: 2,
-        role: "farmer",
-        farmerId: widget.farmerId,
+        role: "collector",
       ),
     );
   }

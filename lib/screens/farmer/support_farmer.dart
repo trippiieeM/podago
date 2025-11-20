@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../widgets/bottom_nav_bar.dart';
+import 'package:podago/widgets/bottom_nav_bar.dart';
 
 class FarmerSupportScreen extends StatelessWidget {
   final String farmerId;
