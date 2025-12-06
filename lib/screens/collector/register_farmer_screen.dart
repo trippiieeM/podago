@@ -13,6 +13,14 @@ class RegisterFarmerScreen extends StatefulWidget {
 }
 
 class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
+  // --- Professional Theme Colors ---
+  static const Color kPrimaryColor = Color(0xFF00695C); // Teal 800
+  static const Color kAccentColor = Color(0xFF009688);  // Teal 500
+  static const Color kBackgroundColor = Color(0xFFF5F7FA);
+  static const Color kCardColor = Colors.white;
+  static const Color kTextPrimary = Color(0xFF263238);
+  static const Color kTextSecondary = Color(0xFF78909C);
+
   final _formKey = GlobalKey<FormState>();
   final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController phoneCtrl = TextEditingController();
@@ -23,6 +31,10 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
   bool isLoading = false;
   bool obscurePin = true;
   bool isOnline = true;
+
+  // ===========================================================================
+  // 1. LOGIC SECTION (STRICTLY PRESERVED)
+  // ===========================================================================
 
   @override
   void initState() {
@@ -47,8 +59,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
       if (mounted) {
         setState(() => isOnline = connected);
       }
-      
-      // Auto-sync when coming back online
       if (connected) {
         _syncOfflineFarmers();
       }
@@ -93,7 +103,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
 
   Future<void> _registerOnline(Map<String, dynamic> farmerData) async {
     try {
-      // Check if farmer with same phone already exists
       final existingFarmers = await FirebaseFirestore.instance
           .collection("users")
           .where("phone", isEqualTo: farmerData["phone"])
@@ -106,7 +115,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
         return;
       }
 
-      // Remove offline fields before saving to Firestore
       final onlineData = Map<String, dynamic>.from(farmerData);
       onlineData.remove('offlineTimestamp');
       onlineData.remove('isOffline');
@@ -116,7 +124,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
       _showSuccessSnackBar("Farmer registered successfully!");
       _clearFormAndNavigate();
     } catch (e) {
-      // If online registration fails, fall back to offline
       print("Online registration failed, falling back to offline: $e");
       await _registerOffline(farmerData);
     }
@@ -135,21 +142,15 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
 
   Future<void> _saveFarmerOffline(Map<String, dynamic> farmerData) async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // Get existing offline farmers
     final offlineFarmersJson = prefs.getStringList('offline_farmers') ?? [];
     final List<Map<String, dynamic>> offlineFarmers = [];
 
     for (final json in offlineFarmersJson) {
       try {
         offlineFarmers.add(jsonDecode(json) as Map<String, dynamic>);
-      } catch (e) {
-        // Skip invalid JSON entries
-        continue;
-      }
+      } catch (e) { continue; }
     }
 
-    // Check for duplicates in offline data
     final duplicate = offlineFarmers.any((farmer) => 
         farmer["phone"] == farmerData["phone"] && farmer["role"] == "farmer");
     
@@ -157,7 +158,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
       throw Exception("Farmer with this phone number already exists in offline data");
     }
 
-    // Add to offline storage
     offlineFarmers.add(farmerData);
     final updatedJsonList = offlineFarmers.map((farmer) => jsonEncode(farmer)).toList();
     await prefs.setStringList('offline_farmers', updatedJsonList);
@@ -165,7 +165,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
 
   Future<void> _syncOfflineFarmers() async {
     if (isLoading) return;
-    
     setState(() => isLoading = true);
 
     try {
@@ -183,13 +182,8 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
       for (final farmerJson in offlineFarmersJson) {
         try {
           final farmerData = jsonDecode(farmerJson) as Map<String, dynamic>;
-          
-          // Skip if already synced
-          if (farmerData["synced"] == true) {
-            continue;
-          }
+          if (farmerData["synced"] == true) continue;
 
-          // Check if farmer already exists online
           final existingFarmers = await FirebaseFirestore.instance
               .collection("users")
               .where("phone", isEqualTo: farmerData["phone"])
@@ -197,7 +191,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
               .get();
 
           if (existingFarmers.docs.isEmpty) {
-            // Prepare data for Firestore
             final onlineData = Map<String, dynamic>.from(farmerData);
             onlineData.remove('offlineTimestamp');
             onlineData.remove('isOffline');
@@ -206,31 +199,19 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
             
             await FirebaseFirestore.instance.collection("users").add(onlineData);
             syncedCount++;
-          } else {
-            // Farmer already exists, keep in list to remove
-            print("Farmer with phone ${farmerData["phone"]} already exists online");
           }
-          
         } catch (e) {
-          // If sync fails for this farmer, keep it in offline storage
-          print("Failed to sync farmer: $e");
           remainingFarmers.add(farmerJson);
         }
       }
 
-      // Update local storage - keep only failed sync attempts
       await prefs.setStringList('offline_farmers', remainingFarmers);
-
-      if (syncedCount > 0) {
-        _showSuccessSnackBar("$syncedCount offline farmers synced successfully!");
-      }
+      if (syncedCount > 0) _showSuccessSnackBar("$syncedCount offline farmers synced successfully!");
       
     } catch (e) {
       print("Sync failed: $e");
     } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -239,42 +220,19 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
       final prefs = await SharedPreferences.getInstance();
       final offlineFarmersJson = prefs.getStringList('offline_farmers') ?? [];
       return offlineFarmersJson.length;
-    } catch (e) {
-      return 0;
-    }
+    } catch (e) { return 0; }
   }
 
   void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green[700],
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: kPrimaryColor, behavior: SnackBarBehavior.floating));
   }
 
   void _showWarningSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.orange[700],
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.orange[700], behavior: SnackBarBehavior.floating));
   }
 
   void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating));
   }
 
   void _clearFormAndNavigate() {
@@ -288,371 +246,21 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
   }
 
   String? _validatePhone(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter phone number';
-    }
+    if (value == null || value.isEmpty) return 'Please enter phone number';
     final phoneRegex = RegExp(r'^[0-9]{10,15}$');
-    if (!phoneRegex.hasMatch(value)) {
-      return 'Please enter a valid phone number';
-    }
+    if (!phoneRegex.hasMatch(value)) return 'Please enter a valid phone number';
     return null;
   }
 
   String? _validatePIN(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please set a PIN';
-    }
-    if (value.length < 4) {
-      return 'PIN must be at least 4 digits';
-    }
-    if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
-      return 'PIN must contain only numbers';
-    }
+    if (value == null || value.isEmpty) return 'Please set a PIN';
+    if (value.length < 4) return 'PIN must be at least 4 digits';
+    if (!RegExp(r'^[0-9]+$').hasMatch(value)) return 'PIN must contain only numbers';
     return null;
   }
 
   void _togglePinVisibility() {
-    setState(() {
-      obscurePin = !obscurePin;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            "Register New Farmer",
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-          backgroundColor: isOnline ? Colors.blue[400] : Colors.orange[400],
-          elevation: 0,
-          iconTheme: const IconThemeData(color: Colors.white),
-          actions: [
-            if (!isOnline)
-              FutureBuilder<int>(
-                future: _getOfflineFarmersCount(),
-                builder: (context, snapshot) {
-                  final count = snapshot.data ?? 0;
-                  if (count > 0) {
-                    return Stack(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.sync_rounded),
-                          tooltip: "Sync Offline Farmers",
-                          onPressed: isLoading ? null : _syncOfflineFarmers,
-                        ),
-                        Positioned(
-                          right: 8,
-                          top: 8,
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 16,
-                              minHeight: 16,
-                            ),
-                            child: Text(
-                              count.toString(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  } else {
-                    return IconButton(
-                      icon: const Icon(Icons.sync_rounded),
-                      tooltip: "Sync Offline Farmers",
-                      onPressed: isLoading ? null : _syncOfflineFarmers,
-                    );
-                  }
-                },
-              ),
-          ],
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              // Header Section
-              _buildHeaderSection(),
-              const SizedBox(height: 24),
-
-              // Connectivity Status
-              _buildConnectivityStatus(),
-              const SizedBox(height: 24),
-
-              // Registration Form
-              _buildRegistrationForm(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderSection() {
-    return Column(
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: isOnline ? Colors.green[50] : Colors.orange[50],
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            isOnline ? Icons.person_add_alt_1_rounded : Icons.save_alt_rounded,
-            color: isOnline ? Colors.green[700] : Colors.orange[700],
-            size: 40,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          "Register New Farmer",
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isOnline ? Colors.green[800] : Colors.orange[800],
-              ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          isOnline 
-            ? "Add a new farmer to your collection network"
-            : "Offline Mode - Farmer data saved locally",
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
-              ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildConnectivityStatus() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: isOnline ? Colors.green[50] : Colors.orange[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isOnline ? Colors.green[100]! : Colors.orange[100]!,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-            color: isOnline ? Colors.green[600] : Colors.orange[600],
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isOnline ? "Online Mode" : "Offline Mode",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: isOnline ? Colors.green[600] : Colors.orange[600],
-                  ),
-                ),
-                Text(
-                  isOnline 
-                    ? "Farmers will be saved directly to cloud"
-                    : "Farmers saved locally. Auto-sync when online.",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isOnline ? Colors.green[600] : Colors.orange[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (!isOnline)
-            FutureBuilder<int>(
-              future: _getOfflineFarmersCount(),
-              builder: (context, snapshot) {
-                final count = snapshot.data ?? 0;
-                return TextButton(
-                  onPressed: isLoading ? null : _syncOfflineFarmers,
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.orange[700],
-                  ),
-                  child: Text(
-                    "SYNC${count > 0 ? ' ($count)' : ''}",
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRegistrationForm() {
-    return Form(
-      key: _formKey,
-      child: Column(
-        children: [
-          TextFormField(
-            controller: nameCtrl,
-            decoration: const InputDecoration(
-              labelText: "Farmer Full Name *",
-              hintText: "Enter farmer's full name",
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.person_outline_rounded),
-            ),
-            textInputAction: TextInputAction.next,
-            validator: (value) =>
-                value == null || value.isEmpty ? "Please enter farmer name" : null,
-          ),
-          const SizedBox(height: 16),
-
-          TextFormField(
-            controller: phoneCtrl,
-            decoration: const InputDecoration(
-              labelText: "Phone Number *",
-              hintText: "Enter 10-digit phone number",
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.phone_rounded),
-            ),
-            keyboardType: TextInputType.phone,
-            textInputAction: TextInputAction.next,
-            validator: _validatePhone,
-          ),
-          const SizedBox(height: 16),
-
-          TextFormField(
-            controller: locationCtrl,
-            decoration: const InputDecoration(
-              labelText: "Location",
-              hintText: "Enter farmer's location or village",
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.location_on_outlined),
-            ),
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 16),
-
-          TextFormField(
-            controller: pinCtrl,
-            obscureText: obscurePin,
-            decoration: InputDecoration(
-              labelText: "Login PIN *",
-              hintText: "Set 4-digit PIN for farmer login",
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(Icons.lock_outline_rounded),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  obscurePin ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                  color: Colors.grey[600],
-                ),
-                onPressed: _togglePinVisibility,
-              ),
-            ),
-            keyboardType: TextInputType.number,
-            textInputAction: TextInputAction.done,
-            validator: _validatePIN,
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 16,
-                  color: Colors.grey[500],
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  "Farmer will use this PIN to log into their account",
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          _buildActionButtons(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton.icon(
-            onPressed: isLoading ? null : _registerFarmer,
-            icon: isLoading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
-                    ),
-                  )
-                : Icon(isOnline ? Icons.person_add_alt_rounded : Icons.save_alt_rounded),
-            label: Text(
-              isLoading ? "Processing..." : "Register Farmer",
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isOnline ? Colors.blue[400] : Colors.orange[400],
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: OutlinedButton(
-            onPressed: isLoading ? null : () => Navigator.pop(context),
-            child: const Text(
-              "Cancel",
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.grey[700],
-              side: BorderSide(color: Colors.grey.shade400),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
+    setState(() => obscurePin = !obscurePin);
   }
 
   @override
@@ -662,5 +270,198 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
     pinCtrl.dispose();
     locationCtrl.dispose();
     super.dispose();
+  }
+
+  // ===========================================================================
+  // 2. UI SECTION (PROFESSIONAL REDESIGN)
+  // ===========================================================================
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: kBackgroundColor,
+        appBar: AppBar(
+          title: const Text("Register Farmer", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
+          backgroundColor: kPrimaryColor,
+          elevation: 0,
+          leading: const BackButton(color: Colors.white),
+          actions: [
+            if (!isOnline)
+              FutureBuilder<int>(
+                future: _getOfflineFarmersCount(),
+                builder: (context, snapshot) {
+                  final count = snapshot.data ?? 0;
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.sync, color: Colors.white),
+                        tooltip: "Sync Offline",
+                        onPressed: isLoading ? null : _syncOfflineFarmers,
+                      ),
+                      if (count > 0)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                            child: Text("$count", style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+          ],
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildConnectivityStatus(),
+              const SizedBox(height: 20),
+              _buildRegistrationCard(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectivityStatus() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isOnline ? Colors.green.shade50 : Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isOnline ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(isOnline ? Icons.wifi : Icons.wifi_off, color: isOnline ? kPrimaryColor : Colors.orange.shade800),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isOnline ? "Online Mode" : "Offline Mode",
+                  style: TextStyle(fontWeight: FontWeight.bold, color: isOnline ? kPrimaryColor : Colors.orange.shade900),
+                ),
+                Text(
+                  isOnline ? "Data saves directly to cloud" : "Data saves locally. Auto-sync when online.",
+                  style: TextStyle(fontSize: 12, color: isOnline ? kPrimaryColor.withOpacity(0.7) : Colors.orange.shade800),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegistrationCard() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: kCardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Farmer Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary)),
+            const SizedBox(height: 20),
+            
+            _buildInputField(nameCtrl, "Full Name", Icons.person_outline, validator: (v) => v!.isEmpty ? "Required" : null),
+            const SizedBox(height: 16),
+            
+            _buildInputField(phoneCtrl, "Phone Number", Icons.phone_outlined, keyboardType: TextInputType.phone, validator: _validatePhone),
+            const SizedBox(height: 16),
+            
+            _buildInputField(locationCtrl, "Location / Village", Icons.location_on_outlined),
+            const SizedBox(height: 16),
+            
+            _buildInputField(
+              pinCtrl, 
+              "Login PIN", 
+              Icons.lock_outline, 
+              isPassword: true, 
+              keyboardType: TextInputType.number, 
+              validator: _validatePIN,
+              helperText: "4-digit PIN for farmer login"
+            ),
+            
+            const SizedBox(height: 30),
+            
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: isLoading ? null : _registerFarmer,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isOnline ? kPrimaryColor : Colors.orange,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: isLoading 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(isOnline ? Icons.check_circle_outline : Icons.save_alt, size: 20),
+                        const SizedBox(width: 8),
+                        Text(isOnline ? "Register Farmer" : "Save Offline", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputField(
+    TextEditingController controller, 
+    String label, 
+    IconData icon, 
+    {bool isPassword = false, 
+    TextInputType? keyboardType, 
+    String? Function(String?)? validator,
+    String? helperText}
+  ) {
+    return TextFormField(
+      controller: controller,
+      obscureText: isPassword && obscurePin,
+      keyboardType: keyboardType,
+      validator: validator,
+      style: const TextStyle(fontWeight: FontWeight.w500, color: kTextPrimary),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: kTextSecondary),
+        helperText: helperText,
+        prefixIcon: Icon(icon, color: kTextSecondary),
+        suffixIcon: isPassword 
+          ? IconButton(
+              icon: Icon(obscurePin ? Icons.visibility_off : Icons.visibility, color: kTextSecondary),
+              onPressed: _togglePinVisibility,
+            ) 
+          : null,
+        filled: true,
+        fillColor: kBackgroundColor,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: kPrimaryColor, width: 2)),
+      ),
+    );
   }
 }

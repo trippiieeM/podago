@@ -11,9 +11,20 @@ class CollectorHistoryScreen extends StatefulWidget {
 }
 
 class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
+  // --- Professional Theme Colors ---
+  static const Color kPrimaryColor = Color(0xFF00695C); // Teal 800
+  static const Color kBackgroundColor = Color(0xFFF5F7FA);
+  static const Color kCardColor = Colors.white;
+  static const Color kTextPrimary = Color(0xFF263238);
+  static const Color kTextSecondary = Color(0xFF78909C);
+
   String? selectedFarmerId;
   DateTime? selectedDate;
   String _searchQuery = '';
+
+  // ===========================================================================
+  // 1. LOGIC SECTION (STRICTLY PRESERVED)
+  // ===========================================================================
 
   /// Pick a date filter
   Future<void> _pickDate() async {
@@ -25,8 +36,8 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Colors.green[700]!,
+            colorScheme: const ColorScheme.light(
+              primary: kPrimaryColor,
               onPrimary: Colors.white,
             ),
           ),
@@ -52,262 +63,54 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
     });
   }
 
+  // ===========================================================================
+  // 2. UI SECTION (PROFESSIONAL REDESIGN)
+  // ===========================================================================
+
   @override
   Widget build(BuildContext context) {
-    Query logsQuery = FirebaseFirestore.instance
-        .collection("milk_logs")
-        .orderBy("date", descending: true);
+    Query logsQuery = FirebaseFirestore.instance.collection("milk_logs").orderBy("date", descending: true);
 
     if (selectedFarmerId != null) {
       logsQuery = logsQuery.where("farmerId", isEqualTo: selectedFarmerId);
     }
     if (selectedDate != null) {
-      final start = DateTime(
-        selectedDate!.year,
-        selectedDate!.month,
-        selectedDate!.day,
-      );
+      final start = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day);
       final end = start.add(const Duration(days: 1));
-      logsQuery = logsQuery.where(
-        "date",
-        isGreaterThanOrEqualTo: start,
-        isLessThan: end,
-      );
+      logsQuery = logsQuery.where("date", isGreaterThanOrEqualTo: start, isLessThan: end);
     }
 
     return Scaffold(
+      backgroundColor: kBackgroundColor,
       appBar: AppBar(
-        title: const Text(
-          "Collection History",
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: Colors.blue[400],
+        title: const Text("Collection History", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
+        backgroundColor: kPrimaryColor,
         elevation: 0,
+        centerTitle: false,
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          if (selectedFarmerId != null || selectedDate != null || _searchQuery.isNotEmpty)
+            TextButton(
+              onPressed: _clearFilters,
+              child: const Text("Clear Filters", style: TextStyle(color: Colors.white)),
+            )
+        ],
       ),
       body: Column(
         children: [
-          // Header Section
-          _buildHeaderSection(),
-          
-          // Filters Section
-          _buildFiltersSection(),
-          
-          // Statistics Section
+          // 1. Statistics Panel
           _buildStatisticsSection(logsQuery),
-          
-          // Logs List
+
+          // 2. Search & Filters
+          _buildFiltersSection(),
+
+          // 3. List Data
           Expanded(
             child: _buildLogsList(logsQuery),
           ),
         ],
       ),
-      bottomNavigationBar: const BottomNavBar(
-        currentIndex: 1,
-        role: "collector",
-      ),
-    );
-  }
-
-  Widget _buildHeaderSection() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: Colors.green[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.history_rounded,
-                  color: Colors.green[700],
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Collection History",
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green[800],
-                          ),
-                    ),
-                    Text(
-                      "View and filter past milk collections",
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey[600],
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFiltersSection() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Search Bar
-          TextField(
-            decoration: InputDecoration(
-              hintText: "Search by farmer name or notes...",
-              prefixIcon: const Icon(Icons.search_rounded),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            onChanged: (value) {
-              setState(() {
-                _searchQuery = value.toLowerCase();
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          
-          Row(
-            children: [
-              // Farmer Filter
-              Expanded(
-                flex: 2,
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection("users")
-                      .where("role", isEqualTo: "farmer")
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Container(
-                        height: 48,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Center(
-                          child: SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      );
-                    }
-
-                    final farmers = snapshot.data?.docs ?? [];
-
-                    return DropdownButtonFormField<String>(
-                      value: selectedFarmerId,
-                      hint: const Text("All Farmers"),
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text("All Farmers"),
-                        ),
-                        ...farmers.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          return DropdownMenuItem<String>(
-                            value: doc.id,
-                            child: Text(data['name'] ?? 'Unnamed Farmer'),
-                          );
-                        }).toList(),
-                      ],
-                      onChanged: (value) => setState(() => selectedFarmerId = value),
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(Icons.person_outline_rounded),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              
-              // Date Filter
-              Expanded(
-                flex: 1,
-                child: ElevatedButton.icon(
-                  onPressed: _pickDate,
-                  icon: Icon(
-                    Icons.calendar_today_rounded,
-                    color: selectedDate == null ? Colors.grey : Colors.green[700],
-                  ),
-                  label: Text(
-                    selectedDate == null
-                        ? "All Dates"
-                        : DateFormat("MMM dd").format(selectedDate!),
-                    style: TextStyle(
-                      color: selectedDate == null ? Colors.grey : Colors.green[700],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[50],
-                    foregroundColor: Colors.green[700],
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
-          // Clear Filters Button
-          if (selectedFarmerId != null || selectedDate != null || _searchQuery.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
-                  onPressed: _clearFilters,
-                  icon: const Icon(Icons.clear_rounded, size: 16),
-                  label: const Text("Clear Filters"),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey[600],
-                    side: BorderSide(color: Colors.grey.shade400),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 1, role: "collector"),
     );
   }
 
@@ -316,82 +119,159 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
       stream: logsQuery.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox();
-        
         final logs = snapshot.data!.docs;
-        if (logs.isEmpty) return const SizedBox();
-        
-        final totalLiters = _calculateTotalLiters(logs);
+        // Even if empty, show zero stats
+        final totalLiters = logs.isEmpty ? 0.0 : _calculateTotalLiters(logs);
         final uniqueFarmers = <String>{};
-        
-        for (final log in logs) {
-          final data = log.data() as Map<String, dynamic>;
-          uniqueFarmers.add(data['farmerName'] ?? 'Unknown');
+        if (logs.isNotEmpty) {
+          for (final log in logs) {
+            final data = log.data() as Map<String, dynamic>;
+            uniqueFarmers.add(data['farmerName'] ?? 'Unknown');
+          }
         }
 
         return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.blue[50],
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatItem(
-                Icons.water_drop_rounded,
-                "${totalLiters.toStringAsFixed(1)}L",
-                "Total Milk",
-                Colors.blue[700]!,
-              ),
-              _buildStatItem(
-                Icons.list_alt_rounded,
-                logs.length.toString(),
-                "Collections",
-                Colors.green[700]!,
-              ),
-              _buildStatItem(
-                Icons.people_rounded,
-                uniqueFarmers.length.toString(),
-                "Farmers",
-                Colors.orange[700]!,
-              ),
-            ],
+          color: kPrimaryColor,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildStatItem(Icons.water_drop, "${totalLiters.toStringAsFixed(1)}L", "Total Volume"),
+                Container(width: 1, height: 40, color: Colors.grey.shade200),
+                _buildStatItem(Icons.receipt_long, "${logs.length}", "Records"),
+                Container(width: 1, height: 40, color: Colors.grey.shade200),
+                _buildStatItem(Icons.people, "${uniqueFarmers.length}", "Farmers"),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildStatItem(IconData icon, String value, String label, Color color) {
+  Widget _buildStatItem(IconData icon, String value, String label) {
     return Column(
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.grey[600],
-          ),
+        Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kPrimaryColor)),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Icon(icon, size: 12, color: kTextSecondary),
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kTextSecondary)),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _buildFiltersSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: kBackgroundColor,
+      child: Column(
+        children: [
+          // Search Bar
+          TextField(
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              hintText: "Search farmer or notes...",
+              hintStyle: TextStyle(color: Colors.grey.shade400),
+              prefixIcon: const Icon(Icons.search, color: kTextSecondary),
+              filled: true,
+              fillColor: kCardColor,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+            ),
+            onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+          ),
+          const SizedBox(height: 12),
+          
+          Row(
+            children: [
+              // Farmer Dropdown
+              Expanded(
+                flex: 3,
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection("users").where("role", isEqualTo: "farmer").snapshots(),
+                  builder: (context, snapshot) {
+                    final farmers = snapshot.data?.docs ?? [];
+                    return Container(
+                      height: 48,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: kCardColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedFarmerId,
+                          isExpanded: true,
+                          hint: const Text("All Farmers", style: TextStyle(fontSize: 13, color: kTextSecondary)),
+                          icon: const Icon(Icons.arrow_drop_down, color: kTextSecondary),
+                          items: [
+                            const DropdownMenuItem<String>(value: null, child: Text("All Farmers", style: TextStyle(fontSize: 13))),
+                            ...farmers.map((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              return DropdownMenuItem<String>(
+                                value: doc.id,
+                                child: Text(data['name'] ?? 'Unnamed', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                              );
+                            }).toList(),
+                          ],
+                          onChanged: (value) => setState(() => selectedFarmerId = value),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              // Date Picker Button
+              Expanded(
+                flex: 2,
+                child: InkWell(
+                  onTap: _pickDate,
+                  child: Container(
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: kCardColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: selectedDate != null ? kPrimaryColor : Colors.grey.shade200),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.calendar_today, size: 16, color: selectedDate != null ? kPrimaryColor : kTextSecondary),
+                        const SizedBox(width: 8),
+                        Text(
+                          selectedDate == null ? "Date" : DateFormat("MMM dd").format(selectedDate!),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: selectedDate != null ? kPrimaryColor : kTextSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -399,29 +279,12 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: logsQuery.snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text(
-                  "Loading collection history...",
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          );
-        }
-
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _buildEmptyState();
-        }
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildEmptyState();
 
         List<QueryDocumentSnapshot> logs = snapshot.data!.docs;
         
-        // Apply search filter
+        // Client-side search filter
         if (_searchQuery.isNotEmpty) {
           logs = logs.where((log) {
             final data = log.data() as Map<String, dynamic>;
@@ -431,134 +294,86 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
           }).toList();
         }
 
-        if (logs.isEmpty) {
-          return _buildEmptySearchState();
-        }
+        if (logs.isEmpty) return _buildEmptySearchState();
 
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Collection Records (${logs.length})",
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[700],
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: logs.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final log = logs[index].data() as Map<String, dynamic>;
-                    return _buildLogCard(log, index);
-                  },
-                ),
-              ),
-            ],
-          ),
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          itemCount: logs.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final log = logs[index].data() as Map<String, dynamic>;
+            return _buildLogCard(log);
+          },
         );
       },
     );
   }
 
-  Widget _buildLogCard(Map<String, dynamic> log, int index) {
+  Widget _buildLogCard(Map<String, dynamic> log) {
     final timestamp = (log['date'] as Timestamp).toDate();
-    final farmerName = log['farmerName'] ?? "Unknown Farmer";
-    final quantity = log['quantity'] ?? 0.0;
+    final farmerName = log['farmerName'] ?? "Unknown";
+    final quantity = (log['quantity'] ?? 0.0).toDouble();
     final notes = log['notes'] ?? '';
 
-    return Card(
-      elevation: 2,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Container(
+      decoration: BoxDecoration(
+        color: kCardColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            // Quantity Indicator
+            // Date Box
             Container(
-              width: 50,
-              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(10),
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
               ),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    quantity.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                  Text(
-                    'L',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.green[700],
-                    ),
-                  ),
+                  Text(DateFormat('MMM').format(timestamp).toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: kTextSecondary)),
+                  Text(DateFormat('dd').format(timestamp), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
                 ],
               ),
             ),
             const SizedBox(width: 16),
             
-            // Log Details
+            // Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    farmerName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
+                  Text(farmerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kTextPrimary)),
                   const SizedBox(height: 4),
-                  if (notes.isNotEmpty)
-                    Text(
-                      notes,
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 14,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  const SizedBox(height: 4),
-                  Text(
-                    DateFormat('MMM dd, yyyy • hh:mm a').format(timestamp),
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 12,
-                    ),
+                  Row(
+                    children: [
+                      Icon(Icons.access_time, size: 12, color: Colors.grey.shade400),
+                      const SizedBox(width: 4),
+                      Text(DateFormat('hh:mm a').format(timestamp), style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                      if (notes.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Expanded(child: Text("• $notes", style: TextStyle(fontSize: 12, color: Colors.grey.shade500), overflow: TextOverflow.ellipsis)),
+                      ]
+                    ],
                   ),
                 ],
               ),
             ),
             
-            // Status Indicator
+            // Quantity
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(6),
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                'Collected',
-                style: TextStyle(
-                  color: Colors.green[700],
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                ),
+                "${quantity.toStringAsFixed(1)}L",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.green.shade800),
               ),
             ),
           ],
@@ -569,43 +384,13 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.history_toggle_off_rounded,
-                size: 48,
-                color: Colors.grey[400],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              "No Collection History",
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[600],
-                  ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              "Milk collection records will appear here\nonce you start logging collections.",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey[500],
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.history, size: 50, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          const Text("No collection history found", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: kTextSecondary)),
+        ],
       ),
     );
   }
@@ -615,23 +400,9 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.search_off_rounded,
-            size: 64,
-            color: Colors.grey[400],
-          ),
+          Icon(Icons.search_off, size: 50, color: Colors.grey.shade300),
           const SizedBox(height: 16),
-          Text(
-            "No matching records",
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.grey[600],
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "Try adjusting your search or filters",
-            style: TextStyle(color: Colors.grey[500]),
-          ),
+          const Text("No matching records", style: TextStyle(color: kTextSecondary)),
         ],
       ),
     );
