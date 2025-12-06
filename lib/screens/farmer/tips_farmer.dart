@@ -13,10 +13,21 @@ class FarmerTipsScreen extends StatefulWidget {
 }
 
 class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
+  // --- Professional Theme Colors ---
+  static const Color kPrimaryGreen = Color(0xFF1B5E20); // Deep Emerald
+  static const Color kBackground = Color(0xFFF3F5F7);   // Light Grey-Blue
+  static const Color kCardColor = Colors.white;
+  static const Color kTextPrimary = Color(0xFF1A1A1A);
+  static const Color kTextSecondary = Color(0xFF757575);
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   List<Map<String, dynamic>> tips = [];
   bool isLoading = true;
   bool hasError = false;
+
+  // ===========================================================================
+  // 1. LOGIC SECTION (STRICTLY PRESERVED)
+  // ===========================================================================
 
   @override
   void initState() {
@@ -67,274 +78,24 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
     }
   }
 
-  Widget _buildLoadingState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 60,
-            height: 60,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Loading Farming Tips',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey.shade700,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Getting the latest advice for you...',
-            style: TextStyle(
-              color: Colors.grey.shade500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 80,
-              color: Colors.orange.shade400,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Unable to Load Tips',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Please check your connection and try again',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 25),
-            ElevatedButton.icon(
-              onPressed: _fetchTips,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Try Again'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade600,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.lightbulb_outline,
-                size: 60,
-                color: Colors.green.shade400,
-              ),
-            ),
-            const SizedBox(height: 25),
-            Text(
-              'No Tips Available Yet',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Check back later for expert farming advice\nand best practices',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 16,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 25),
-            ElevatedButton.icon(
-              onPressed: _fetchTips,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Refresh'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade600,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTipCard(Map<String, dynamic> tip, int index) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Material(
-        elevation: 2,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.green.shade50,
-                Colors.white,
-              ],
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.green.shade100,
-              width: 1,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.green.shade400,
-                            Colors.green.shade600,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.eco,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Tip ${index + 1}',
-                            style: TextStyle(
-                              color: Colors.green.shade600,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            tip['content'],
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black87,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (tip['createdAt'] != null)
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 14,
-                        color: Colors.grey.shade500,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _formatDate(tip['createdAt'] as Timestamp),
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  // ===========================================================================
+  // 2. UI SECTION (PROFESSIONAL REDESIGN)
+  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: kBackground,
       appBar: AppBar(
-        title: const Text(
-          "Farming Tips",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
+        title: const Text("Knowledge Hub", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: kTextPrimary)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(Icons.refresh, color: kTextSecondary),
             onPressed: _fetchTips,
-            tooltip: 'Refresh Tips',
+            tooltip: 'Refresh',
           ),
         ],
       ),
@@ -345,69 +106,23 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
               : tips.isEmpty
                   ? _buildEmptyState()
                   : Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Header
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.green.shade100,
-                                  Colors.green.shade50,
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.shade600,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.agriculture,
-                                    color: Colors.white,
-                                    size: 24,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Expert Farming Advice',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green.shade800,
-                                        ),
-                                      ),
-                                      Text(
-                                        '${tips.length} tips available',
-                                        style: TextStyle(
-                                          color: Colors.green.shade600,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          // Tips List
+                          // --- Header Card ---
+                          _buildHeaderCard(),
+                          const SizedBox(height: 24),
+                          
+                          const Text("Latest Insights", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+                          const SizedBox(height: 12),
+
+                          // --- Tips List ---
                           Expanded(
-                            child: ListView.builder(
+                            child: ListView.separated(
                               physics: const BouncingScrollPhysics(),
                               itemCount: tips.length,
+                              separatorBuilder: (context, index) => const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 return _buildTipCard(tips[index], index);
                               },
@@ -420,6 +135,156 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
         currentIndex: 2,
         role: "farmer",
         farmerId: widget.farmerId,
+      ),
+    );
+  }
+
+  // --- UI Components ---
+
+  Widget _buildHeaderCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [kPrimaryGreen, kPrimaryGreen.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: kPrimaryGreen.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Grow your farm", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                  "Access ${tips.length} expert tips curated for better yield and herd health.",
+                  style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+            child: const Icon(Icons.lightbulb_outline, color: Colors.white, size: 24),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTipCard(Map<String, dynamic> tip, int index) {
+    return Container(
+      decoration: BoxDecoration(
+        color: kCardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(left: BorderSide(color: kPrimaryGreen, width: 4)), // Professional accent strip
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text("TIP #${index + 1}", style: TextStyle(color: Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                    if (tip['createdAt'] != null)
+                      Text(
+                        _formatDate(tip['createdAt'] as Timestamp),
+                        style: const TextStyle(color: kTextSecondary, fontSize: 10),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  tip['content'],
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: kTextPrimary,
+                    height: 1.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Icon(Icons.format_quote_rounded, size: 20, color: Colors.grey.shade300),
+                  ],
+                )
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- State Widgets ---
+
+  Widget _buildLoadingState() {
+    return const Center(child: CircularProgressIndicator(color: kPrimaryGreen));
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.wifi_off, size: 60, color: Colors.grey),
+          const SizedBox(height: 16),
+          const Text("Could not load tips", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+          const Text("Check your connection", style: TextStyle(color: kTextSecondary)),
+          const SizedBox(height: 24),
+          TextButton(
+            onPressed: _fetchTips,
+            style: TextButton.styleFrom(foregroundColor: kPrimaryGreen),
+            child: const Text("Try Again"),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.library_books_outlined, size: 60, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          const Text("No tips available yet", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextSecondary)),
+          const SizedBox(height: 8),
+          const Text("Check back later for updates", style: TextStyle(color: kTextSecondary, fontSize: 12)),
+          const SizedBox(height: 24),
+          TextButton(
+            onPressed: _fetchTips,
+            style: TextButton.styleFrom(foregroundColor: kPrimaryGreen),
+            child: const Text("Refresh"),
+          )
+        ],
       ),
     );
   }

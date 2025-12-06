@@ -7,60 +7,62 @@ class FarmerSupportScreen extends StatelessWidget {
 
   const FarmerSupportScreen({super.key, required this.farmerId});
 
+  // --- Professional Theme Colors ---
+  static const Color kPrimaryGreen = Color(0xFF1B5E20); // Deep Emerald
+  static const Color kBackground = Color(0xFFF3F5F7);   // Light Grey-Blue
+  static const Color kCardColor = Colors.white;
+  static const Color kTextPrimary = Color(0xFF1A1A1A);
+  static const Color kTextSecondary = Color(0xFF757575);
+
+  // ===========================================================================
+  // 1. LOGIC SECTION (STRICTLY PRESERVED)
+  // ===========================================================================
+
   Future<void> _launchUrl(String url, BuildContext context) async {
     try {
       final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri);
       } else {
-        // Show error message to user
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Cannot open $url'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
+            SnackBar(content: Text('Cannot open $url'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)),
           );
         }
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
+          SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)),
         );
       }
     }
   }
 
-  // WhatsApp launch with proper formatting
+  // WhatsApp
   Future<void> _launchWhatsApp(BuildContext context) async {
-    const phone = "254792746672"; // Kenyan number without +
+    const phone = "254792746672";
     const message = "Hello, I need support with my Podago account";
     final url = "https://wa.me/$phone?text=${Uri.encodeComponent(message)}";
     await _launchUrl(url, context);
   }
 
-  // Phone call launch
+  // Phone Call
   Future<void> _launchPhoneCall(BuildContext context) async {
-    const phone = "+254792746672"; // International format with +
+    const phone = "+254792746672";
     final url = "tel:$phone";
     await _launchUrl(url, context);
   }
 
-  // SMS launch
+  // SMS
   Future<void> _launchSMS(BuildContext context) async {
-    const phone = "+254792746672"; // International format with +
+    const phone = "+254792746672";
     const message = "Hello, I need support with my Podago account";
     final url = "sms:$phone?body=${Uri.encodeComponent(message)}";
     await _launchUrl(url, context);
   }
 
-  // Email launch
+  // Email
   Future<void> _launchEmail(BuildContext context) async {
     const email = "muchirimorris007@gmail.com";
     const subject = "Support Request - Podago Farmer";
@@ -69,458 +71,94 @@ class FarmerSupportScreen extends StatelessWidget {
     await _launchUrl(url, context);
   }
 
-  Widget _buildSupportCard({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String subtitle,
-    required String description,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                color.withOpacity(0.1),
-                color.withOpacity(0.05),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: color.withOpacity(0.2),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: color.withOpacity(0.3),
-                    width: 2,
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      description,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios,
-                color: color,
-                size: 16,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.green.shade50,
-            Colors.blue.shade50,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.green.shade100,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.green.shade100,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.help_outline,
-                  color: Colors.green,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  "We're Here to Help!",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            "Get instant support for any issues with milk collection, payments, or technical problems. Our team is available 24/7 to assist you.",
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.black87,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(
-                Icons.access_time,
-                size: 14,
-                color: Colors.green.shade600,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                "Available 24/7",
-                style: TextStyle(
-                  color: Colors.green.shade600,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Icon(
-                Icons.verified_user,
-                size: 14,
-                color: Colors.green.shade600,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                "Quick Response",
-                style: TextStyle(
-                  color: Colors.green.shade600,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActions(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Quick Actions",
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _buildQuickActionButton(
-                icon: Icons.chat_bubble_outline,
-                label: "Live Chat",
-                color: Colors.green,
-                onTap: () => _launchWhatsApp(context),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildQuickActionButton(
-                icon: Icons.phone_in_talk,
-                label: "Call Now",
-                color: Colors.blue,
-                onTap: () => _launchPhoneCall(context),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      borderRadius: BorderRadius.circular(12),
-      color: color.withOpacity(0.1),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                color: color,
-                size: 24,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFAQSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Frequently Asked Questions",
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildFAQItem(
-          question: "How do I update my profile information?",
-          answer: "Go to your profile section and tap on 'Edit Profile' to update your details.",
-        ),
-        _buildFAQItem(
-          question: "When will I receive my payments?",
-          answer: "Payments are processed every Friday for the previous week's milk collection.",
-        ),
-        _buildFAQItem(
-          question: "What if my milk quantity is recorded incorrectly?",
-          answer: "Contact support immediately with your collection details for correction.",
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFAQItem({required String question, required String answer}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-        title: Text(
-          question,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Text(
-              answer,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade700,
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // ===========================================================================
+  // 2. UI SECTION (PROFESSIONAL REDESIGN)
+  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: kBackground,
       appBar: AppBar(
-        title: const Text(
-          "Support Center",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
+        title: const Text("Help & Support", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: kTextPrimary)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
+        physics: const BouncingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Info Card
-            _buildInfoCard(),
-
-            // Quick Actions
-            _buildQuickActions(context),
+            // --- Header Card ---
+            _buildHeroCard(),
             const SizedBox(height: 24),
 
-            // Support Channels
-            const Text(
-              "Support Channels",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+            // --- Contact Grid (Replaces vertical list) ---
+            const Text("Contact Us", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+            const SizedBox(height: 12),
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.3,
+              children: [
+                _buildContactTile(
+                  icon: Icons.headset_mic,
+                  title: "Call Support",
+                  subtitle: "Talk to us",
+                  color: Colors.blue,
+                  onTap: () => _launchPhoneCall(context),
+                ),
+                _buildContactTile(
+                  icon: Icons.chat_bubble,
+                  title: "WhatsApp",
+                  subtitle: "Chat now",
+                  color: Colors.green,
+                  onTap: () => _launchWhatsApp(context),
+                ),
+                _buildContactTile(
+                  icon: Icons.email,
+                  title: "Email",
+                  subtitle: "Send details",
+                  color: Colors.purple,
+                  onTap: () => _launchEmail(context),
+                ),
+                _buildContactTile(
+                  icon: Icons.sms,
+                  title: "SMS",
+                  subtitle: "Text us",
+                  color: Colors.orange,
+                  onTap: () => _launchSMS(context),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
 
-            // Phone Support
-            _buildSupportCard(
-              icon: Icons.phone,
-              color: Colors.green,
-              title: "Call Support",
-              subtitle: "+254 792 746 672",
-              description: "Speak directly with our support team",
-              onTap: () => _launchPhoneCall(context),
-            ),
+            const SizedBox(height: 30),
 
-            // WhatsApp Support
-            _buildSupportCard(
-              icon: Icons.chat,
-              color: Colors.green,
-              title: "WhatsApp Support",
-              subtitle: "+254 792 746 672",
-              description: "Get instant messaging support",
-              onTap: () => _launchWhatsApp(context),
-            ),
-
-            // Email Support
-            _buildSupportCard(
-              icon: Icons.email,
-              color: Colors.blue,
-              title: "Email Support",
-              subtitle: "muchirimorris007@gmail.com",
-              description: "Send us detailed queries",
-              onTap: () => _launchEmail(context),
-            ),
-
-            // SMS Support
-            _buildSupportCard(
-              icon: Icons.sms,
-              color: Colors.orange,
-              title: "SMS Support",
-              subtitle: "+254 792 746 672",
-              description: "Text us for quick assistance",
-              onTap: () => _launchSMS(context),
-            ),
+            // --- FAQ Section ---
+            const Text("Frequently Asked Questions", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+            const SizedBox(height: 12),
+            _buildFAQList(),
 
             const SizedBox(height: 24),
 
-            // FAQ Section
-            _buildFAQSection(),
-
-            const SizedBox(height: 20),
-
-            // Footer Note
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
+            // --- Footer Info ---
+            Center(
               child: Column(
                 children: [
-                  Icon(
-                    Icons.verified_user,
-                    size: 32,
-                    color: Colors.green.shade600,
-                  ),
+                  Icon(Icons.verified_user_outlined, color: Colors.grey.shade400, size: 40),
                   const SizedBox(height: 8),
-                  const Text(
-                    "Your satisfaction is our priority",
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
+                  Text("Support ID: $farmerId", style: TextStyle(color: Colors.grey.shade400, fontSize: 10)),
                   const SizedBox(height: 4),
-                  Text(
-                    "Average response time: 15 minutes",
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 12,
-                    ),
-                  ),
+                  Text("v1.0.0 • Podago Secure", style: TextStyle(color: Colors.grey.shade400, fontSize: 10)),
                 ],
               ),
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -529,6 +167,131 @@ class FarmerSupportScreen extends StatelessWidget {
         role: "farmer",
         farmerId: farmerId,
       ),
+    );
+  }
+
+  // --- UI Components ---
+
+  Widget _buildHeroCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [kPrimaryGreen, kPrimaryGreen.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: kPrimaryGreen.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+            child: const Icon(Icons.support_agent, color: Colors.white, size: 28),
+          ),
+          const SizedBox(height: 16),
+          const Text("How can we help?", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text(
+            "Our team is available 24/7 to assist with payments, collections, and app issues.",
+            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContactTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: kCardColor,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const Spacer(),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary)),
+              const SizedBox(height: 4),
+              Text(subtitle, style: const TextStyle(fontSize: 11, color: kTextSecondary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFAQList() {
+    return Container(
+      decoration: BoxDecoration(
+        color: kCardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8)],
+      ),
+      child: Column(
+        children: [
+          _buildFAQTile(
+            "How do I update my profile?",
+            "Navigate to your profile section and tap on 'Edit Profile' to update your personal details securely.",
+            showDivider: true,
+          ),
+          _buildFAQTile(
+            "When are payments processed?",
+            "Payments are automatically processed every Friday for the previous week's milk collection totals.",
+            showDivider: true,
+          ),
+          _buildFAQTile(
+            "Incorrect milk records?",
+            "If you spot a discrepancy, please use the WhatsApp button above to send us a screenshot of your receipt.",
+            showDivider: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFAQTile(String question, String answer, {bool showDivider = true}) {
+    return Column(
+      children: [
+        Theme(
+          data: ThemeData().copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            title: Text(question, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: kTextPrimary)),
+            childrenPadding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+            children: [
+              Text(answer, style: const TextStyle(fontSize: 13, color: kTextSecondary, height: 1.5)),
+            ],
+          ),
+        ),
+        if (showDivider)
+          Divider(height: 1, thickness: 1, color: Colors.grey.shade100, indent: 20, endIndent: 20),
+      ],
     );
   }
 }
