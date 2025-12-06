@@ -2,12 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:podago/screens/auth/login_screen.dart';
-import 'package:podago/services/simple_storage_service.dart'; // Updated import
+import 'package:podago/services/simple_storage_service.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   final User? user;
   
   const RoleSelectionScreen({super.key, this.user});
+
+  // --- Professional Theme Colors ---
+  static const Color kPrimaryGreen = Color(0xFF1B5E20); // Deep Emerald
+  static const Color kAccentBlue = Color(0xFF0277BD);   // Professional Blue
+  static const Color kBackground = Color(0xFFF5F7FA);   // Light Grey-Blue
+  static const Color kTextPrimary = Color(0xFF1A1A1A);
+  static const Color kTextSecondary = Color(0xFF757575);
+
+  // ===========================================================================
+  // 1. LOGIC SECTION (STRICTLY PRESERVED)
+  // ===========================================================================
 
   Future<void> _selectRole(BuildContext context, String role) async {
     final currentUser = user ?? FirebaseAuth.instance.currentUser;
@@ -23,24 +34,19 @@ class RoleSelectionScreen extends StatelessWidget {
       return;
     }
 
-    // Show loading indicator
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
+      builder: (context) => const Center(child: CircularProgressIndicator(color: kPrimaryGreen)),
     );
 
     try {
-      // Save role to Firestore
       await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).set({
         'role': role,
         'email': currentUser.email,
         'lastRoleUpdate': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // ✅ Save to local storage based on role
       if (role == 'farmer') {
         await SimpleStorageService.savePinSession(
           userId: currentUser.uid,
@@ -55,35 +61,20 @@ class RoleSelectionScreen extends StatelessWidget {
         );
       }
       
-      print('💾 Role saved locally: $role');
-
-      // Close loading dialog
       if (context.mounted) {
         Navigator.pop(context);
       }
-
-      // AuthGate will automatically detect the local storage and redirect
 
     } catch (e) {
-      // Close loading dialog
       if (context.mounted) {
         Navigator.pop(context);
-      }
-      
-      // Show error
-      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update role: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
+          SnackBar(content: Text('Failed to update role: ${e.toString()}'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
-  // Add logout functionality
   Future<void> _logout(BuildContext context) async {
     final shouldLogout = await showDialog<bool>(
       context: context,
@@ -91,314 +82,151 @@ class RoleSelectionScreen extends StatelessWidget {
         title: const Text('Logout'),
         content: const Text('Are you sure you want to logout?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Logout'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Logout', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
 
     if (shouldLogout == true) {
-      // Show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-
-      // ✅ Clear local storage
+      showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator()));
       await SimpleStorageService.clearUserSession();
-      
-      // Sign out from Firebase
       await FirebaseAuth.instance.signOut();
       
-      // Close loading and navigate
       if (context.mounted) {
         Navigator.pop(context);
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-          (route) => false,
-        );
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const RoleSelectionScreen()), (route) => false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
+      backgroundColor: kBackground,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              // Header Section
-              _buildHeaderSection(context),
-              const SizedBox(height: 48),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                _buildHeader(),
+                const SizedBox(height: 40),
 
-              // Role Selection Cards
-              _buildRoleCards(context, size),
+                // Cards
+                _buildRoleCard(
+                  context,
+                  title: "I am a Farmer",
+                  subtitle: "Log production & track income",
+                  icon: Icons.agriculture,
+                  color: kPrimaryGreen,
+                  role: "farmer",
+                ),
+                const SizedBox(height: 20),
+                _buildRoleCard(
+                  context,
+                  title: "I am a Collector",
+                  subtitle: "Record collections & manage routes",
+                  icon: Icons.local_shipping,
+                  color: kAccentBlue,
+                  role: "collector",
+                ),
 
-              // Additional Info
-              _buildAdditionalInfo(),
-            ],
+                const SizedBox(height: 40),
+
+                // User Info / Footer
+                if (user != null)
+                  _buildLoggedInFooter(context)
+                else
+                  const Center(
+                    child: Text(
+                      "Select a role to sign in or register",
+                      style: TextStyle(color: kTextSecondary, fontSize: 13),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeaderSection(BuildContext context) {
+  Widget _buildHeader() {
     return Column(
       children: [
-        const SizedBox(height: 20),
-        // App Logo/Icon
         Container(
-          width: 120,
-          height: 120,
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Colors.green[400]!, Colors.green[700]!],
-            ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.green.withOpacity(0.3),
-                blurRadius: 15,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.agriculture_rounded,
             color: Colors.white,
-            size: 50,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
           ),
-        ),
-        const SizedBox(height: 32),
-        Text(
-          "Welcome to MilkSync",
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: Colors.green[800],
-            letterSpacing: -0.5,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          user == null 
-            ? "Please select your role to continue"
-            : "Almost there! Please select your role",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.grey[600],
-            height: 1.5,
-          ),
-        ),
-        if (user != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            "Logged in as: ${user!.email}",
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.green[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => _logout(context),
-            child: Text(
-              "Not ${user!.email}? Sign out",
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildRoleCards(BuildContext context, Size size) {
-    return Column(
-      children: [
-        // Farmer Card
-        _buildRoleCard(
-          context: context,
-          role: "farmer",
-          title: "Farmer",
-          subtitle: "Sell your milk and track collections",
-          icon: Icons.agriculture_rounded,
-          color: Colors.green,
-          description: "• Log daily milk production\n• Track collection history\n• View payments and reports",
-          onTap: () => _selectRole(context, "farmer"),
+          child: const Icon(Icons.eco, size: 48, color: kPrimaryGreen),
         ),
         const SizedBox(height: 24),
-
-        // Collector Card
-        _buildRoleCard(
-          context: context,
-          role: "collector",
-          title: "Milk Collector",
-          subtitle: "Collect milk from farmers and manage routes",
-          icon: Icons.local_shipping_rounded,
-          color: Colors.blue,
-          description: "• Register new farmers\n• Record milk collections\n• Manage collection history\n• Generate reports",
-          onTap: () => _selectRole(context, "collector"),
+        const Text(
+          "Welcome to Podago",
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: kTextPrimary, letterSpacing: -0.5),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          "Streamlining milk collection\nfrom farm to factory.",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, color: kTextSecondary, height: 1.5),
         ),
       ],
     );
   }
 
-  Widget _buildRoleCard({
-    required BuildContext context,
-    required String role,
+  Widget _buildRoleCard(
+    BuildContext context, {
     required String title,
     required String subtitle,
     required IconData icon,
     required Color color,
-    required String description,
-    required VoidCallback onTap,
+    required String role,
   }) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: () => _selectRole(context, role),
         borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
+            color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                color.withOpacity(0.05),
-                color.withOpacity(0.1),
-              ],
-            ),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(color: color.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 8)),
+            ],
           ),
-          child: Column(
+          child: Row(
             children: [
-              // Icon and Title
-              Row(
-                children: [
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      icon,
-                      color: color,
-                      size: 30,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: color,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Description
               Container(
-                width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: color.withOpacity(0.2)),
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[700],
-                    height: 1.6,
-                  ),
-                ),
+                child: Icon(icon, color: color, size: 32),
               ),
-              const SizedBox(height: 16),
-
-              // Select Button
-              Container(
-                width: double.infinity,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [color, color.withOpacity(0.8)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "Continue as $title",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.arrow_forward_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                    Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary)),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: const TextStyle(fontSize: 13, color: kTextSecondary)),
                   ],
                 ),
               ),
+              Icon(Icons.arrow_forward_ios_rounded, size: 18, color: Colors.grey.shade300),
             ],
           ),
         ),
@@ -406,74 +234,36 @@ class RoleSelectionScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAdditionalInfo() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 32, bottom: 20),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: Colors.blue[600],
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    "You can change your role later in settings",
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+  Widget _buildLoggedInFooter(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(30),
           ),
-          const SizedBox(height: 20),
-          Text(
-            "Need help choosing?",
-            style: TextStyle(
-              color: Colors.grey[500],
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                "Farmers: Milk producers",
-                style: TextStyle(
-                  color: Colors.green[600],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Text(
-                "•",
-                style: TextStyle(color: Colors.grey[400]),
-              ),
-              Text(
-                "Collectors: Milk aggregators",
-                style: TextStyle(
-                  color: Colors.blue[600],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+              const Icon(Icons.account_circle, size: 20, color: kTextSecondary),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  user?.email ?? "User",
+                  style: const TextStyle(fontWeight: FontWeight.w600, color: kTextPrimary),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: () => _logout(context),
+          child: const Text("Not you? Switch Account", style: TextStyle(color: kTextSecondary)),
+        ),
+      ],
     );
   }
 }
