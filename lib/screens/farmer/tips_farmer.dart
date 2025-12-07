@@ -13,7 +13,6 @@ class FarmerTipsScreen extends StatefulWidget {
 }
 
 class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
-  // --- Professional Theme Colors ---
   static const Color kPrimaryGreen = Color(0xFF1B5E20); // Deep Emerald
   static const Color kBackground = Color(0xFFF3F5F7);   // Light Grey-Blue
   static const Color kCardColor = Colors.white;
@@ -25,9 +24,6 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
   bool isLoading = true;
   bool hasError = false;
 
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
 
   @override
   void initState() {
@@ -78,9 +74,6 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
     }
   }
 
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {

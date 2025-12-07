@@ -30,11 +30,6 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     super.initState();
     _fetchCurrentMilkPrice();
   }
-
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
-
   /// --- Fetch current milk price from admin system ---
   Future<void> _fetchCurrentMilkPrice() async {
     try {
@@ -168,10 +163,6 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
       'deductionsAppliedToPending': deductionsAppliedToPending,
     };
   }
-
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {

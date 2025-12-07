@@ -52,10 +52,6 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
   bool isLoading = true;
   bool hasError = false;
 
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
-
   @override
   void initState() {
     super.initState();
@@ -90,10 +86,6 @@ class _CollectorTipsScreenState extends State<CollectorTipsScreen> {
   String _formatDate(DateTime date) {
     return DateFormat('MMM dd, yyyy • hh:mm a').format(date);
   }
-
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {

@@ -40,10 +40,6 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
   StreamSubscription? _connectivitySubscription;
   List<Map<String, dynamic>> _farmersList = [];
 
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
-
   @override
   void initState() {
     super.initState();
@@ -256,11 +252,7 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
       ),
     );
   }
-
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
-
+  
   @override
   Widget build(BuildContext context) {
     return GestureDetector(

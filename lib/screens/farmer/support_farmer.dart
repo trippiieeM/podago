@@ -14,9 +14,6 @@ class FarmerSupportScreen extends StatelessWidget {
   static const Color kTextPrimary = Color(0xFF1A1A1A);
   static const Color kTextSecondary = Color(0xFF757575);
 
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
 
   Future<void> _launchUrl(String url, BuildContext context) async {
     try {
@@ -70,10 +67,6 @@ class FarmerSupportScreen extends StatelessWidget {
     final url = "mailto:$email?subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}";
     await _launchUrl(url, context);
   }
-
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {

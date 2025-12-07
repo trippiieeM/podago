@@ -22,11 +22,6 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
   DateTime? selectedDate;
   String _searchQuery = '';
 
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
-
-  /// Pick a date filter
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -62,10 +57,6 @@ class _CollectorHistoryScreenState extends State<CollectorHistoryScreen> {
       return total + (data['quantity'] ?? 0.0);
     });
   }
-
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {

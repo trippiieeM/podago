@@ -36,10 +36,6 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
     'Lucerne Meal', 'Urea-Molasses Block', 'Yeast/Probiotic Additives', 'Protein Concentrate'
   ];
 
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
-
   @override
   void initState() {
     super.initState();
@@ -153,10 +149,6 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
       if(mounted) setState(() { _isSubmitting = false; });
     }
   }
-
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {

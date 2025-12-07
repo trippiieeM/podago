@@ -32,10 +32,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
   bool obscurePin = true;
   bool isOnline = true;
 
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
-
   @override
   void initState() {
     super.initState();
@@ -271,10 +267,6 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
     locationCtrl.dispose();
     super.dispose();
   }
-
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {

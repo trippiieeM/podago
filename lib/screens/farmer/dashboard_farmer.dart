@@ -315,7 +315,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text("Podago Farm", style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold)),
+        title: Text("Podago Coparative farmer", style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold)),
         actions: [
           IconButton(icon: const Icon(Icons.logout, color: Colors.grey), onPressed: _logout),
         ],

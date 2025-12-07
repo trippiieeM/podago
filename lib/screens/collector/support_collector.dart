@@ -13,10 +13,6 @@ class CollectorSupportScreen extends StatelessWidget {
   static const Color kTextPrimary = Color(0xFF263238);
   static const Color kTextSecondary = Color(0xFF78909C);
 
-  // ===========================================================================
-  // 1. LOGIC SECTION (STRICTLY PRESERVED)
-  // ===========================================================================
-
   Future<void> _launchPhone(String phoneNumber) async {
     final Uri telLaunchUri = Uri(
       scheme: 'tel',
@@ -53,10 +49,6 @@ class CollectorSupportScreen extends StatelessWidget {
       await launchUrl(whatsappLaunchUri);
     }
   }
-
-  // ===========================================================================
-  // 2. UI SECTION (PROFESSIONAL REDESIGN)
-  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {
