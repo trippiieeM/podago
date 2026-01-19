@@ -39,12 +39,16 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
   int _pendingSyncCount = 0;
   StreamSubscription? _connectivitySubscription;
   List<Map<String, dynamic>> _farmersList = [];
+  String? currentCollectorName;
+  String? currentCollectorId;
+
 
   @override
   void initState() {
     super.initState();
     _initializeConnectivity();
     _checkPendingSyncs();
+    _loadCurrentUser();
     _loadFarmers();
   }
 
@@ -54,6 +58,25 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
     quantityCtrl.dispose();
     notesCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      setState(() {
+        currentCollectorId = user.uid;
+      });
+      try {
+        final doc = await FirebaseFirestore.instance.collection("users").doc(user.uid).get();
+        if (doc.exists && mounted) {
+          setState(() {
+            currentCollectorName = doc.data()?['name'] ?? 'Unknown Collector';
+          });
+        }
+      } catch (e) {
+        print("Error fetching collector name: $e");
+      }
+    }
   }
 
   void _loadFarmers() {
@@ -112,8 +135,11 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
           await FirebaseFirestore.instance.collection("milk_logs").add({
             "farmerId": log["farmerId"],
             "farmerName": farmerName,
+            "farmerName": farmerName,
             "quantity": log["quantity"],
             "notes": log["notes"],
+            "collectorId": currentCollectorId,
+            "collectorName": currentCollectorName ?? "Unknown Collector",
             "status": "pending",
             "date": DateTime.fromMillisecondsSinceEpoch(log["originalTimestamp"]),
             "timestamp": FieldValue.serverTimestamp(),
@@ -151,6 +177,8 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
         "farmerName": farmerName,
         "quantity": double.tryParse(quantityCtrl.text) ?? 0,
         "notes": notesCtrl.text.trim(),
+        "collectorId": currentCollectorId,
+        "collectorName": currentCollectorName ?? "Unknown Collector",
         "originalTimestamp": DateTime.now().millisecondsSinceEpoch,
       };
 
