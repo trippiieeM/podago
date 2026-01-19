@@ -1,19 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'firebase_options.dart';
+
 import 'package:podago/screens/auth/login_screen.dart';
 import 'package:podago/screens/auth/role_selection_screen.dart';
 import 'package:podago/screens/farmer/dashboard_farmer.dart';
 import 'package:podago/screens/collector/dashboard_collector.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:podago/services/simple_storage_service.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  
+
+  await dotenv.load(fileName: ".env");
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const PodagoApp());
 }
 
@@ -25,7 +33,9 @@ class PodagoApp extends StatelessWidget {
     return MaterialApp(
       title: 'Podago',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.green),
+      theme: ThemeData(
+        primarySwatch: Colors.green,
+      ),
       home: const AuthGate(),
     );
   }
@@ -40,50 +50,50 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   Future<Widget> _checkLocalSession() async {
-    print('🕵️ Checking local session...');
+    debugPrint('🕵️ Checking local session...');
     final localSession = await SimpleStorageService.getUserSession();
-    
-    print('📱 Local storage data: $localSession');
 
-    // If we have local session data, use it immediately
-    if (localSession != null && await SimpleStorageService.hasValidSession()) {
+    debugPrint('📱 Local storage data: $localSession');
+
+    if (localSession != null &&
+        await SimpleStorageService.hasValidSession()) {
       final role = localSession['role'];
       final userId = localSession['userId'];
       final authType = localSession['authType'];
-      
-      print('🎯 Found valid local session: $role for user: $userId (Auth: $authType)');
-      
+
+      debugPrint(
+          '🎯 Found valid local session: $role for user: $userId (Auth: $authType)');
+
       if (authType == 'pin') {
-        // PIN-based session (Farmer) - no Firebase Auth check needed
-        print('🔐 PIN-based session - redirecting to FarmerDashboard');
+        debugPrint('🔐 PIN-based session → FarmerDashboard');
         return FarmerDashboard(farmerId: userId);
       } else {
-        // Firebase Auth session (Collector) - verify with Firebase
         final firebaseUser = FirebaseAuth.instance.currentUser;
-        print('🔥 Firebase current user: $firebaseUser');
-        
+        debugPrint('🔥 Firebase current user: $firebaseUser');
+
         if (firebaseUser != null && firebaseUser.uid == userId) {
-          print('✅ Firebase session verified');
+          debugPrint('✅ Firebase session verified');
+
           if (role == 'collector') {
             return const CollectorDashboard();
           } else if (role == 'farmer') {
             return FarmerDashboard(farmerId: userId);
           }
         } else {
-          print('⚠️ Firebase session outdated, clearing...');
+          debugPrint('⚠️ Firebase session outdated → clearing');
           await SimpleStorageService.clearUserSession();
         }
       }
     } else {
-      print('❌ No valid local session found');
+      debugPrint('❌ No valid local session found');
     }
-    
-    // No valid local session, check Firebase Auth for collectors
+
     final firebaseUser = FirebaseAuth.instance.currentUser;
-    
+
     if (firebaseUser != null) {
-      // User is authenticated with Firebase but no local session
-      print('👤 Firebase user found but no local session - checking Firestore role');
+      debugPrint(
+          '👤 Firebase user found but no local session → checking Firestore');
+
       try {
         final doc = await FirebaseFirestore.instance
             .collection('users')
@@ -91,11 +101,9 @@ class _AuthGateState extends State<AuthGate> {
             .get();
 
         if (doc.exists) {
-          final userData = doc.data();
-          final role = userData?['role'];
-          
+          final role = doc.data()?['role'];
+
           if (role == 'collector') {
-            // Save session and redirect
             await SimpleStorageService.saveFirebaseSession(
               userId: firebaseUser.uid,
               userEmail: firebaseUser.email ?? '',
@@ -112,12 +120,11 @@ class _AuthGateState extends State<AuthGate> {
           }
         }
       } catch (e) {
-        print('❌ Error checking Firestore: $e');
+        debugPrint('❌ Firestore error: $e');
       }
     }
 
-    // No valid session - show role selection
-    print('🚪 No valid session - showing RoleSelectionScreen');
+    debugPrint('🚪 No valid session → RoleSelectionScreen');
     return const RoleSelectionScreen();
   }
 
@@ -142,7 +149,7 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         if (snapshot.hasError) {
-          print('💥 Error in auth gate: ${snapshot.error}');
+          debugPrint('💥 AuthGate error: ${snapshot.error}');
           return Scaffold(
             body: Center(
               child: Column(
@@ -161,7 +168,7 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         final screen = snapshot.data;
-        print('🏁 Final screen: ${screen.runtimeType}');
+        debugPrint('🏁 Final screen: ${screen.runtimeType}');
         return screen ?? const RoleSelectionScreen();
       },
     );

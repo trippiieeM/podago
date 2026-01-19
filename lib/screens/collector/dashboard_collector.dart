@@ -264,14 +264,11 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
           bottom: false,
           child: Column(
             children: [
-              // 1. Status Bar (Fixed Height)
               _buildStatusBar(),
               
-              // 2. Main Content (Scrollable Form + List)
               Expanded(
                 child: Column(
                   children: [
-                    // Form Section (Scrollable for small screens)
                     SingleChildScrollView(
                       padding: const EdgeInsets.all(16),
                       child: _buildCollectionForm(),
@@ -279,7 +276,6 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
                     
                     const Divider(height: 1, color: Color(0xFFE0E0E0)),
 
-                    // List Section (Takes remaining space)
                     Expanded(
                       child: _buildCollectionList(),
                     ),
@@ -289,7 +285,6 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
             ],
           ),
         ),
-        // Hide nav bar when keyboard is open to avoid overflow
         bottomNavigationBar: MediaQuery.of(context).viewInsets.bottom == 0 
             ? const BottomNavBar(currentIndex: 0, role: "collector") 
             : null,
@@ -321,7 +316,6 @@ class _CollectorDashboardState extends State<CollectorDashboard> {
     );
   }
 
-  // Dedicated Status Bar for Network & Sync
   Widget _buildStatusBar() {
     final bgColor = _isOnline ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0); // Light Green vs Light Orange
     final textColor = _isOnline ? Colors.green[800] : Colors.orange[900];
