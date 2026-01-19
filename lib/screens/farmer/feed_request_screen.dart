@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:podago/utils/app_theme.dart';
 
 class FeedRequestScreen extends StatefulWidget {
   final String farmerId;
@@ -12,13 +13,6 @@ class FeedRequestScreen extends StatefulWidget {
 }
 
 class _FeedRequestScreenState extends State<FeedRequestScreen> {
-  // --- Professional Theme Colors ---
-  static const Color kPrimaryGreen = Color(0xFF1B5E20); // Deep Emerald
-  static const Color kBackground = Color(0xFFF3F5F7);   // Light Grey-Blue
-  static const Color kCardColor = Colors.white;
-  static const Color kTextPrimary = Color(0xFF1A1A1A);
-  static const Color kTextSecondary = Color(0xFF757575);
-
   // --- Logic Variables (Preserved) ---
   String _selectedFeedType = 'Dairy Meal';
   double _selectedQuantity = 25.0;
@@ -140,7 +134,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
       });
 
       if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Feed request submitted successfully!'), backgroundColor: kPrimaryGreen));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Feed request submitted successfully!'), backgroundColor: AppTheme.kPrimaryGreen));
         setState(() { _selectedFeedType = 'Dairy Meal'; _selectedQuantity = 25.0; });
       }
     } catch (e) {
@@ -164,7 +158,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
           children: [
             // --- Inventory Status ---
             if (_availableFeeds.isNotEmpty) ...[
-              const Text("Inventory Status", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+              const Text("Inventory Status", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.kTextPrimary)),
               const SizedBox(height: 12),
               SizedBox(
                 height: 90,
@@ -182,7 +176,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
             // --- Order Form ---
             Container(
               decoration: BoxDecoration(
-                color: kCardColor,
+                color: AppTheme.kCardColor,
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))],
               ),
@@ -192,22 +186,22 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
                 children: [
                   Row(
                     children: [
-                      Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: kPrimaryGreen.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.add_shopping_cart, color: kPrimaryGreen)),
+                      Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppTheme.kPrimaryGreen.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.add_shopping_cart, color: AppTheme.kPrimaryGreen)),
                       const SizedBox(width: 12),
-                      const Text("New Request", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary)),
+                      const Text("New Request", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.kTextPrimary)),
                     ],
                   ),
                   const SizedBox(height: 24),
                   
                   // Feed Type Dropdown
-                  const Text("Select Feed", style: TextStyle(fontWeight: FontWeight.w600, color: kTextSecondary, fontSize: 13)),
+                  const Text("Select Feed", style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.kTextSecondary, fontSize: 13)),
                   const SizedBox(height: 8),
                   _buildDropdown(),
 
                   const SizedBox(height: 20),
 
                   // Quantity Grid
-                  const Text("Quantity (KG)", style: TextStyle(fontWeight: FontWeight.w600, color: kTextSecondary, fontSize: 13)),
+                  const Text("Quantity (KG)", style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.kTextSecondary, fontSize: 13)),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 10,
@@ -240,7 +234,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
                     child: ElevatedButton(
                       onPressed: _isSubmitting ? null : (_canSubmit() ? _submitFeedRequest : null),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: kPrimaryGreen,
+                        backgroundColor: AppTheme.kPrimaryGreen,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -257,7 +251,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
             const SizedBox(height: 30),
 
             // --- History Section ---
-            const Text("Request History", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+            const Text("Request History", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.kTextPrimary)),
             const SizedBox(height: 12),
             _buildHistorySection(),
             
@@ -270,13 +264,9 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
 
   Scaffold _buildScaffold(Widget body) {
     return Scaffold(
-      backgroundColor: kBackground,
+      backgroundColor: AppTheme.kBackground,
       appBar: AppBar(
-        title: const Text("Request Feed", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: kTextPrimary)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: const BackButton(color: kTextPrimary),
+        title: const Text("Request Feed"),
       ),
       body: body,
     );
@@ -292,7 +282,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
       width: 140,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(16),
         border: isLow ? Border.all(color: Colors.orange.withOpacity(0.3)) : null,
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6)],
@@ -303,7 +293,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
         children: [
           Text(
             feed['type'].toString().split('(')[0], // Shorten name
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: kTextPrimary),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.kTextPrimary),
             maxLines: 1, overflow: TextOverflow.ellipsis
           ),
           const SizedBox(height: 8),
@@ -315,7 +305,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
             ),
             child: Text(
               "${status['available']} kg",
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isLow ? Colors.orange.shade800 : kPrimaryGreen),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isLow ? Colors.orange.shade800 : AppTheme.kPrimaryGreen),
             ),
           )
         ],
@@ -327,7 +317,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: kBackground,
+        color: AppTheme.kBackground,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade300),
       ),
@@ -335,11 +325,11 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
         child: DropdownButton<String>(
           value: _selectedFeedType,
           isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: kTextSecondary),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.kTextSecondary),
           items: _feedTypes.map((type) {
             return DropdownMenuItem(
               value: type,
-              child: Text(type, style: const TextStyle(fontSize: 14, color: kTextPrimary)),
+              child: Text(type, style: const TextStyle(fontSize: 14, color: AppTheme.kTextPrimary)),
             );
           }).toList(),
           onChanged: (value) => setState(() => _selectedFeedType = value!),
@@ -357,9 +347,9 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? kPrimaryGreen : (isAvailable ? Colors.white : Colors.grey.shade100),
+          color: isSelected ? AppTheme.kPrimaryGreen : (isAvailable ? Colors.white : Colors.grey.shade100),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isSelected ? kPrimaryGreen : (isAvailable ? Colors.grey.shade300 : Colors.transparent)),
+          border: Border.all(color: isSelected ? AppTheme.kPrimaryGreen : (isAvailable ? Colors.grey.shade300 : Colors.transparent)),
           boxShadow: isAvailable && !isSelected ? [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)] : null,
         ),
         child: Text(
@@ -367,7 +357,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: isSelected ? Colors.white : (isAvailable ? kTextPrimary : Colors.grey.shade400),
+            color: isSelected ? Colors.white : (isAvailable ? AppTheme.kTextPrimary : Colors.grey.shade400),
           ),
         ),
       ),
@@ -409,7 +399,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)],
       ),
@@ -425,9 +415,9 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(feedType, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary)),
+                Text(feedType, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.kTextPrimary)),
                 const SizedBox(height: 4),
-                Text("${quantity}kg • ${DateFormat('MMM dd').format(date)}", style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                Text("${quantity}kg • ${DateFormat('MMM dd').format(date)}", style: const TextStyle(fontSize: 12, color: AppTheme.kTextSecondary)),
               ],
             ),
           ),
@@ -444,7 +434,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
   // --- States ---
 
   Widget _buildLoadingState() {
-    return const Center(child: CircularProgressIndicator(color: kPrimaryGreen));
+    return const Center(child: CircularProgressIndicator(color: AppTheme.kPrimaryGreen));
   }
 
   Widget _buildErrorState() {
@@ -454,7 +444,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
         children: [
           const Icon(Icons.error_outline, size: 48, color: Colors.grey),
           const SizedBox(height: 16),
-          Text(_errorMessage, style: const TextStyle(color: kTextSecondary), textAlign: TextAlign.center),
+          Text(_errorMessage, style: const TextStyle(color: AppTheme.kTextSecondary), textAlign: TextAlign.center),
           TextButton(onPressed: _initializeData, child: const Text("Retry"))
         ],
       ),
@@ -469,7 +459,7 @@ class _FeedRequestScreenState extends State<FeedRequestScreen> {
           children: [
             Icon(Icons.history, size: 40, color: Colors.grey.shade300),
             const SizedBox(height: 8),
-            const Text("No requests yet", style: TextStyle(color: kTextSecondary, fontSize: 13)),
+            const Text("No requests yet", style: TextStyle(color: AppTheme.kTextSecondary, fontSize: 13)),
           ],
         ),
       ),

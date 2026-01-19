@@ -12,6 +12,8 @@ import 'package:podago/screens/collector/dashboard_collector.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:podago/services/simple_storage_service.dart';
+import 'package:podago/utils/app_theme.dart';
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +27,8 @@ Future<void> main() async {
   runApp(const PodagoApp());
 }
 
+
+
 class PodagoApp extends StatelessWidget {
   const PodagoApp({super.key});
 
@@ -33,9 +37,7 @@ class PodagoApp extends StatelessWidget {
     return MaterialApp(
       title: 'Podago',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.green,
-      ),
+      theme: AppTheme.lightTheme, // Use the new theme
       home: const AuthGate(),
     );
   }

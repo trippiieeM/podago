@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:podago/widgets/bottom_nav_bar.dart';
 
+import 'package:podago/utils/app_theme.dart'; // NEW
+
 class FarmerTipsScreen extends StatefulWidget {
   final String farmerId;
 
@@ -13,11 +15,7 @@ class FarmerTipsScreen extends StatefulWidget {
 }
 
 class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
-  static const Color kPrimaryGreen = Color(0xFF1B5E20); // Deep Emerald
-  static const Color kBackground = Color(0xFFF3F5F7);   // Light Grey-Blue
-  static const Color kCardColor = Colors.white;
-  static const Color kTextPrimary = Color(0xFF1A1A1A);
-  static const Color kTextSecondary = Color(0xFF757575);
+  // Using AppTheme
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   List<Map<String, dynamic>> tips = [];
@@ -78,15 +76,12 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBackground,
+      backgroundColor: AppTheme.kBackground,
       appBar: AppBar(
-        title: const Text("Knowledge Hub", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: kTextPrimary)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
+        title: const Text("Knowledge Hub"),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: kTextSecondary),
+            icon: const Icon(Icons.refresh),
             onPressed: _fetchTips,
             tooltip: 'Refresh',
           ),
@@ -107,7 +102,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                           _buildHeaderCard(),
                           const SizedBox(height: 24),
                           
-                          const Text("Latest Insights", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+                          const Text("Latest Insights", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.kTextPrimary)),
                           const SizedBox(height: 12),
 
                           // --- Tips List ---
@@ -140,13 +135,13 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [kPrimaryGreen, kPrimaryGreen.withOpacity(0.8)],
+          colors: [AppTheme.kPrimaryGreen, AppTheme.kPrimaryGreen.withOpacity(0.8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: kPrimaryGreen.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
+          BoxShadow(color: AppTheme.kPrimaryGreen.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
         ],
       ),
       child: Row(
@@ -177,7 +172,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
   Widget _buildTipCard(Map<String, dynamic> tip, int index) {
     return Container(
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))],
       ),
@@ -185,7 +180,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: const BoxDecoration(
-            border: Border(left: BorderSide(color: kPrimaryGreen, width: 4)), // Professional accent strip
+            border: Border(left: BorderSide(color: AppTheme.kPrimaryGreen, width: 4)), // Professional accent strip
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -206,7 +201,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                     if (tip['createdAt'] != null)
                       Text(
                         _formatDate(tip['createdAt'] as Timestamp),
-                        style: const TextStyle(color: kTextSecondary, fontSize: 10),
+                        style: const TextStyle(color: AppTheme.kTextSecondary, fontSize: 10),
                       ),
                   ],
                 ),
@@ -215,7 +210,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
                   tip['content'],
                   style: const TextStyle(
                     fontSize: 14,
-                    color: kTextPrimary,
+                    color: AppTheme.kTextPrimary,
                     height: 1.5,
                     fontWeight: FontWeight.w500,
                   ),
@@ -238,7 +233,7 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
   // --- State Widgets ---
 
   Widget _buildLoadingState() {
-    return const Center(child: CircularProgressIndicator(color: kPrimaryGreen));
+    return const Center(child: CircularProgressIndicator(color: AppTheme.kPrimaryGreen));
   }
 
   Widget _buildErrorState() {
@@ -248,12 +243,12 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
         children: [
           const Icon(Icons.wifi_off, size: 60, color: Colors.grey),
           const SizedBox(height: 16),
-          const Text("Could not load tips", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
-          const Text("Check your connection", style: TextStyle(color: kTextSecondary)),
+          const Text("Could not load tips", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.kTextPrimary)),
+          const Text("Check your connection", style: TextStyle(color: AppTheme.kTextSecondary)),
           const SizedBox(height: 24),
           TextButton(
             onPressed: _fetchTips,
-            style: TextButton.styleFrom(foregroundColor: kPrimaryGreen),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.kPrimaryGreen),
             child: const Text("Try Again"),
           )
         ],
@@ -268,13 +263,13 @@ class _FarmerTipsScreenState extends State<FarmerTipsScreen> {
         children: [
           Icon(Icons.library_books_outlined, size: 60, color: Colors.grey.shade300),
           const SizedBox(height: 16),
-          const Text("No tips available yet", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextSecondary)),
+          const Text("No tips available yet", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.kTextSecondary)),
           const SizedBox(height: 8),
-          const Text("Check back later for updates", style: TextStyle(color: kTextSecondary, fontSize: 12)),
+          const Text("Check back later for updates", style: TextStyle(color: AppTheme.kTextSecondary, fontSize: 12)),
           const SizedBox(height: 24),
           TextButton(
             onPressed: _fetchTips,
-            style: TextButton.styleFrom(foregroundColor: kPrimaryGreen),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.kPrimaryGreen),
             child: const Text("Refresh"),
           )
         ],

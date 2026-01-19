@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:podago/widgets/bottom_nav_bar.dart';
+import 'package:podago/services/pricing_service.dart'; // NEW
+import 'package:podago/utils/app_theme.dart'; // NEW
 
 class FarmerHistoryScreen extends StatefulWidget {
   final String farmerId;
@@ -14,11 +16,7 @@ class FarmerHistoryScreen extends StatefulWidget {
 
 class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
   // --- Professional Theme Colors ---
-  static const Color kPrimaryGreen = Color(0xFF1B5E20); // Deep Emerald
-  static const Color kBackground = Color(0xFFF3F5F7);   // Light Grey-Blue
-  static const Color kCardColor = Colors.white;
-  static const Color kTextPrimary = Color(0xFF1A1A1A);
-  static const Color kTextSecondary = Color(0xFF757575);
+  // Using AppTheme now
 
   // --- Logic Variables (Preserved) ---
   double _pricePerLiter = 45.0; 
@@ -32,38 +30,12 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
   }
   /// --- Fetch current milk price from admin system ---
   Future<void> _fetchCurrentMilkPrice() async {
-    try {
-      // Method 1: System Config
-      final priceConfig = await FirebaseFirestore.instance.collection('system_config').doc('milk_price').get();
-      if (priceConfig.exists) {
-        final data = priceConfig.data() as Map<String, dynamic>?;
-        if (data != null && data.containsKey('pricePerLiter')) {
-          setState(() { _pricePerLiter = (data['pricePerLiter'] ?? 45.0).toDouble(); _isLoadingPrice = false; });
-          return;
-        }
-      }
-      // Method 2: Recent Payments
-      final recentPayments = await FirebaseFirestore.instance.collection('payments').where('type', isEqualTo: 'milk_payment').orderBy('createdAt', descending: true).limit(1).get();
-      if (recentPayments.docs.isNotEmpty) {
-        final paymentData = recentPayments.docs.first.data();
-        if (paymentData.containsKey('pricePerLiter')) {
-          setState(() { _pricePerLiter = (paymentData['pricePerLiter'] ?? 45.0).toDouble(); _isLoadingPrice = false; });
-          return;
-        }
-      }
-      // Method 3: Recent Logs
-      final recentMilkLogs = await FirebaseFirestore.instance.collection('milk_logs').where('status', isEqualTo: 'paid').orderBy('date', descending: true).limit(1).get();
-      if (recentMilkLogs.docs.isNotEmpty) {
-        final milkData = recentMilkLogs.docs.first.data();
-        if (milkData.containsKey('pricePerLiter')) {
-          setState(() { _pricePerLiter = (milkData['pricePerLiter'] ?? 45.0).toDouble(); _isLoadingPrice = false; });
-          return;
-        }
-      }
-      // Fallback
-      setState(() { _pricePerLiter = 45.0; _isLoadingPrice = false; });
-    } catch (error) {
-      setState(() { _pricePerLiter = 45.0; _isLoadingPrice = false; });
+    final price = await PricingService().getCurrentMilkPrice();
+    if (mounted) {
+      setState(() {
+        _pricePerLiter = price;
+        _isLoadingPrice = false;
+      });
     }
   }
 
@@ -167,15 +139,13 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBackground,
+      backgroundColor: AppTheme.kBackground,
       appBar: AppBar(
-        title: const Text("Transactions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: kTextPrimary)),
-        backgroundColor: Colors.transparent,
+        title: const Text("Transactions"),
         elevation: 0,
-        centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: kTextSecondary),
+            icon: const Icon(Icons.refresh),
             onPressed: () { setState(() { _isLoadingPrice = true; }); _fetchCurrentMilkPrice(); },
           ),
         ],
@@ -223,7 +193,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
                                 value: "KES ${NumberFormat.compact().format(paymentTotals['totalMilkIncome'])}",
                                 subtitle: "Protected Earnings",
                                 icon: Icons.verified_user_outlined, 
-                                color: kPrimaryGreen
+                                color: AppTheme.kPrimaryGreen
                               )),
                               const SizedBox(width: 12),
                               Expanded(child: _buildSummaryCard(
@@ -303,7 +273,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary),
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.kTextPrimary),
     );
   }
 
@@ -311,7 +281,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
       ),
@@ -326,8 +296,8 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
           const SizedBox(height: 12),
           Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
           const SizedBox(height: 4),
-          Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kTextPrimary)),
-          Text(subtitle, style: const TextStyle(fontSize: 10, color: kTextSecondary)),
+          Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.kTextPrimary)),
+          Text(subtitle, style: const TextStyle(fontSize: 10, color: AppTheme.kTextSecondary)),
         ],
       ),
     );
@@ -403,15 +373,15 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? kPrimaryGreen : Colors.white,
+          color: isSelected ? AppTheme.kPrimaryGreen : Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isSelected ? kPrimaryGreen : Colors.grey.shade300),
-          boxShadow: isSelected ? [BoxShadow(color: kPrimaryGreen.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))] : null,
+          border: Border.all(color: isSelected ? AppTheme.kPrimaryGreen : Colors.grey.shade300),
+          boxShadow: isSelected ? [BoxShadow(color: AppTheme.kPrimaryGreen.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))] : null,
         ),
         child: Center(
           child: Text(
             label,
-            style: TextStyle(color: isSelected ? Colors.white : kTextSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+            style: TextStyle(color: isSelected ? Colors.white : AppTheme.kTextSecondary, fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -430,7 +400,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: isDeduction ? Colors.red : Colors.green, width: 4)),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)],
@@ -441,7 +411,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(isDeduction ? 'Feed Deduction' : 'Milk Payment', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Text(DateFormat('MMM dd • hh:mm a').format(date), style: const TextStyle(color: kTextSecondary, fontSize: 11)),
+              Text(DateFormat('MMM dd • hh:mm a').format(date), style: const TextStyle(color: AppTheme.kTextSecondary, fontSize: 11)),
             ],
           ),
           const Spacer(),
@@ -473,7 +443,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8)],
       ),
@@ -491,7 +461,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
               children: [
                 Text("${quantity.toStringAsFixed(1)} Liters", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 const SizedBox(height: 4),
-                Text(DateFormat('MMM dd, yyyy').format(date), style: const TextStyle(color: kTextSecondary, fontSize: 11)),
+                Text(DateFormat('MMM dd, yyyy').format(date), style: const TextStyle(color: AppTheme.kTextSecondary, fontSize: 11)),
               ],
             ),
           ),
@@ -514,7 +484,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
 
   // --- States ---
   Widget _buildLoadingState() {
-    return const Center(child: CircularProgressIndicator(color: kPrimaryGreen));
+    return const Center(child: CircularProgressIndicator(color: AppTheme.kPrimaryGreen));
   }
 
   Widget _buildErrorState(String error) {

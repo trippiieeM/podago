@@ -9,8 +9,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:podago/widgets/bottom_nav_bar.dart';
 import 'package:podago/models/Milk_predictor.dart';
 import 'package:podago/services/simple_storage_service.dart';
+import 'package:podago/services/pricing_service.dart'; // NEW
+import 'package:podago/utils/app_theme.dart'; // NEW
 import 'package:podago/screens/auth/role_selection_screen.dart';
 import 'package:podago/screens/farmer/feed_request_screen.dart';
+import 'package:podago/screens/farmer/support_farmer.dart';
+import 'package:podago/screens/farmer/reports_farmer.dart';
+import 'package:podago/screens/farmer/history_farmer.dart';
 
 class FarmerDashboard extends StatefulWidget {
   final String farmerId;
@@ -22,14 +27,9 @@ class FarmerDashboard extends StatefulWidget {
 }
 
 class _FarmerDashboardState extends State<FarmerDashboard> {
-  // --- Constants ---
-  static const Color kPrimaryGreen = Color(0xFF1B5E20);
-  static const Color kCardColor = Colors.white;
-  static const Color kBgColor = Color(0xFFF3F5F7);
-
   // --- State Variables ---
   String _farmerName = "Loading...";
-  double _pricePerLiter = 45.0; // Default fallback
+  double _pricePerLiter = 45.0; 
   bool _isLoadingData = true;
 
   @override
@@ -49,28 +49,8 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
           .doc(widget.farmerId)
           .get();
           
-      // 2. Fetch Price (Your logic)
-      double price = 45.0;
-      try {
-        // Check Config
-        final configDoc = await FirebaseFirestore.instance.collection('system_config').doc('milk_price').get();
-        if (configDoc.exists && configDoc.data() != null) {
-          price = (configDoc.data()!['pricePerLiter'] as num).toDouble();
-        } else {
-          // Check Recent Payment (Fallback)
-          final paymentSnapshot = await FirebaseFirestore.instance
-              .collection('payments')
-              .where('type', isEqualTo: 'milk_payment')
-              .orderBy('createdAt', descending: true)
-              .limit(1)
-              .get();
-          if (paymentSnapshot.docs.isNotEmpty) {
-             price = (paymentSnapshot.docs.first.data()['pricePerLiter'] as num).toDouble();
-          }
-        }
-      } catch (e) {
-        print("Price fetch error: $e"); // Silently fail to default
-      }
+      // 2. Fetch Price (Centralized Service)
+      final price = await PricingService().getCurrentMilkPrice();
 
       if (mounted) {
         setState(() {
@@ -114,7 +94,8 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: isPrimary ? color : kCardColor,
+        color: isPrimary ? color : AppTheme.kCardColor,
+        gradient: isPrimary ? AppTheme.primaryGradient : null,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -171,7 +152,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
     Color trendColor = trend == 'growing' ? Colors.green : (trend == 'declining' ? Colors.red : Colors.grey);
     return Container(
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
       ),
@@ -212,7 +193,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5)],
       ),
@@ -256,6 +237,53 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
     );
   }
 
+  Widget _buildQuickActionsGrid() {
+    final actions = [
+      {'title': 'Request Feed', 'icon': Icons.inventory_2_outlined, 'color': Colors.orange, 'page': FeedRequestScreen(farmerId: widget.farmerId)},
+      {'title': 'History', 'icon': Icons.history, 'color': AppTheme.kPrimaryBlue, 'page': FarmerHistoryScreen(farmerId: widget.farmerId)},
+      {'title': 'Reports', 'icon': Icons.bar_chart, 'color': Colors.purple, 'page': FarmerReportsScreen(farmerId: widget.farmerId)},
+      {'title': 'Support', 'icon': Icons.headset_mic_outlined, 'color': Colors.redAccent, 'page': FarmerSupportScreen(farmerId: widget.farmerId)},
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        childAspectRatio: 0.8,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: actions.length,
+      itemBuilder: (context, index) {
+        final action = actions[index];
+        return GestureDetector(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => action['page'] as Widget)),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (action['color'] as Color).withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(action['icon'] as IconData, color: action['color'] as Color, size: 24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                action['title'] as String,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildFeedRequestCard() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -266,14 +294,14 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
           .snapshots(),
       builder: (context, snapshot) {
         String status = 'Request Feed';
-        Color statusColor = kPrimaryGreen;
+        Color statusColor = AppTheme.kPrimaryGreen;
         IconData statusIcon = Icons.inventory_2_outlined;
 
         if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
           final data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
           final s = data['status'] ?? 'pending';
           if (s == 'pending') { status = 'Pending'; statusColor = Colors.orange; statusIcon = Icons.hourglass_empty; }
-          else if (s == 'approved') { status = 'Approved'; statusColor = Colors.green; statusIcon = Icons.check_circle; }
+          else if (s == 'approved') { status = 'Approved'; statusColor = AppTheme.kSuccess; statusIcon = Icons.check_circle; }
         }
 
         return GestureDetector(
@@ -281,7 +309,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: kCardColor,
+              color: AppTheme.kCardColor,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: statusColor.withOpacity(0.3)),
             ),
@@ -306,18 +334,16 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
     // If loading initial data, show spinner immediately (No blank screen)
     if (_isLoadingData) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: kPrimaryGreen)),
+        body: Center(child: CircularProgressIndicator(color: AppTheme.kPrimaryGreen)),
       );
     }
 
     return Scaffold(
-      backgroundColor: kBgColor,
+      backgroundColor: AppTheme.kBackground,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text("Podago Coparative farmer", style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold)),
+        title: const Text("Podago Cooperative"),
         actions: [
-          IconButton(icon: const Icon(Icons.logout, color: Colors.grey), onPressed: _logout),
+          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -363,8 +389,8 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 1. Welcome
-                Text("Welcome back, $_farmerName", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                Text("Current Price: KES $_pricePerLiter/L", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                Text("Welcome back, $_farmerName", style: AppTheme.displayMedium),
+                Text("Current Price: KES $_pricePerLiter/L", style: AppTheme.bodyMedium),
                 const SizedBox(height: 20),
 
                 // 2. Stats Grid
@@ -378,7 +404,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                           title: "Today",
                           value: "${todayTotal.toStringAsFixed(1)}L",
                           subtitle: "Daily yield",
-                          color: Colors.blue,
+                          color: AppTheme.kPrimaryBlue,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -388,7 +414,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                           title: "Month",
                           value: "${monthTotal.toStringAsFixed(0)}L",
                           subtitle: "Total yield",
-                          color: kPrimaryGreen,
+                          color: AppTheme.kPrimaryGreen,
                           isPrimary: true,
                         ),
                       ),
@@ -402,7 +428,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.orange,
+                    gradient: const LinearGradient(colors: [Colors.orange, Colors.deepOrangeAccent]),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
                   ),
@@ -422,10 +448,16 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                 ),
                 
                 const SizedBox(height: 24),
-                _buildFeedRequestCard(),
+                const SizedBox(height: 24),
+                
+                // NEW: Quick Actions
+                _buildQuickActionsGrid(),
+
+                const SizedBox(height: 24),
+                // _buildFeedRequestCard(), // Removed in favor of Quick Action, or keep as "Recent Request Status"
 
                 const SizedBox(height: 30),
-                const Text("AI Forecast", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text("AI Forecast", style: AppTheme.titleLarge),
                 const SizedBox(height: 10),
 
                 FutureBuilder<Map<String, dynamic>>(
@@ -447,7 +479,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                       mainAxisSpacing: 12,
                       childAspectRatio: 1.5,
                       children: [
-                        _buildPredictionCard(title: "Tomorrow", value: "${daily.prediction.toStringAsFixed(1)} L", subtitle: "Conf: ${(daily.confidence*100).toInt()}%", trend: daily.trend, icon: Icons.wb_sunny, color: Colors.blue),
+                        _buildPredictionCard(title: "Tomorrow", value: "${daily.prediction.toStringAsFixed(1)} L", subtitle: "Conf: ${(daily.confidence*100).toInt()}%", trend: daily.trend, icon: Icons.wb_sunny, color: AppTheme.kPrimaryBlue),
                         _buildPredictionCard(title: "Next Week", value: "${weekly.prediction.toStringAsFixed(0)} L", subtitle: "Estimate", trend: weekly.trend, icon: Icons.calendar_view_week, color: Colors.purple),
                         _buildPredictionCard(title: "Next Month", value: "${monthly.prediction.toStringAsFixed(0)} L", subtitle: "Estimate", trend: monthly.trend, icon: Icons.calendar_month, color: Colors.orange),
                         _buildPredictionCard(title: "Yearly", value: "${(yearly.prediction/1000).toStringAsFixed(1)}k L", subtitle: "Estimate", trend: yearly.trend, icon: Icons.analytics, color: Colors.teal),
@@ -457,7 +489,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                 ),
 
                 const SizedBox(height: 30),
-                const Text("Recent Transactions", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text("Recent Transactions", style: AppTheme.titleLarge),
                 const SizedBox(height: 10),
                 
                 if (logs.isEmpty)

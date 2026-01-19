@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:podago/widgets/bottom_nav_bar.dart';
+import 'package:podago/utils/app_theme.dart'; // NEW
 
 class FarmerSupportScreen extends StatelessWidget {
   final String farmerId;
@@ -8,11 +9,8 @@ class FarmerSupportScreen extends StatelessWidget {
   const FarmerSupportScreen({super.key, required this.farmerId});
 
   // --- Professional Theme Colors ---
-  static const Color kPrimaryGreen = Color(0xFF1B5E20); // Deep Emerald
-  static const Color kBackground = Color(0xFFF3F5F7);   // Light Grey-Blue
-  static const Color kCardColor = Colors.white;
-  static const Color kTextPrimary = Color(0xFF1A1A1A);
-  static const Color kTextSecondary = Color(0xFF757575);
+  // --- Professional Theme Colors ---
+  // Using AppTheme
 
 
   Future<void> _launchUrl(String url, BuildContext context) async {
@@ -71,12 +69,9 @@ class FarmerSupportScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBackground,
+      backgroundColor: AppTheme.kBackground,
       appBar: AppBar(
-        title: const Text("Help & Support", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: kTextPrimary)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
+        title: const Text("Help & Support"),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -89,7 +84,7 @@ class FarmerSupportScreen extends StatelessWidget {
             const SizedBox(height: 24),
 
             // --- Contact Grid (Replaces vertical list) ---
-            const Text("Contact Us", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+            const Text("Contact Us", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.kTextPrimary)),
             const SizedBox(height: 12),
             GridView.count(
               shrinkWrap: true,
@@ -133,7 +128,7 @@ class FarmerSupportScreen extends StatelessWidget {
             const SizedBox(height: 30),
 
             // --- FAQ Section ---
-            const Text("Frequently Asked Questions", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextPrimary)),
+            const Text("Frequently Asked Questions", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.kTextPrimary)),
             const SizedBox(height: 12),
             _buildFAQList(),
 
@@ -156,7 +151,7 @@ class FarmerSupportScreen extends StatelessWidget {
         ),
       ),
       bottomNavigationBar: BottomNavBar(
-        currentIndex: 3,
+        currentIndex: 4,
         role: "farmer",
         farmerId: farmerId,
       ),
@@ -171,13 +166,13 @@ class FarmerSupportScreen extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [kPrimaryGreen, kPrimaryGreen.withOpacity(0.8)],
+          colors: [AppTheme.kPrimaryGreen, AppTheme.kPrimaryGreen.withOpacity(0.8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: kPrimaryGreen.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
+          BoxShadow(color: AppTheme.kPrimaryGreen.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
         ],
       ),
       child: Column(
@@ -215,7 +210,7 @@ class FarmerSupportScreen extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: kCardColor,
+            color: AppTheme.kCardColor,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))],
           ),
@@ -229,9 +224,9 @@ class FarmerSupportScreen extends StatelessWidget {
                 child: Icon(icon, color: color, size: 20),
               ),
               const Spacer(),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: kTextPrimary)),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.kTextPrimary)),
               const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(fontSize: 11, color: kTextSecondary)),
+              Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.kTextSecondary)),
             ],
           ),
         ),
@@ -242,7 +237,7 @@ class FarmerSupportScreen extends StatelessWidget {
   Widget _buildFAQList() {
     return Container(
       decoration: BoxDecoration(
-        color: kCardColor,
+        color: AppTheme.kCardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8)],
       ),
@@ -275,10 +270,10 @@ class FarmerSupportScreen extends StatelessWidget {
           data: ThemeData().copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
             tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            title: Text(question, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: kTextPrimary)),
+            title: Text(question, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppTheme.kTextPrimary)),
             childrenPadding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
             children: [
-              Text(answer, style: const TextStyle(fontSize: 13, color: kTextSecondary, height: 1.5)),
+              Text(answer, style: const TextStyle(fontSize: 13, color: AppTheme.kTextSecondary, height: 1.5)),
             ],
           ),
         ),

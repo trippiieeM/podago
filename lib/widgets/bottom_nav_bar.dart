@@ -7,6 +7,7 @@ import 'package:podago/screens/farmer/tips_farmer.dart';
 import 'package:podago/screens/collector/tips_collector.dart';
 import 'package:podago/screens/farmer/support_farmer.dart';
 import 'package:podago/screens/collector/support_collector.dart';
+import 'package:podago/screens/farmer/reports_farmer.dart';
 
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -37,6 +38,9 @@ class BottomNavBar extends StatelessWidget {
           destination = FarmerTipsScreen(farmerId: farmerId!);
           break;
         case 3:
+          destination = FarmerReportsScreen(farmerId: farmerId!);
+          break;
+        case 4:
           destination = FarmerSupportScreen(farmerId: farmerId!);
           break;
         default:
@@ -69,21 +73,32 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    List<BottomNavigationBarItem> items = [];
+
+    if (role == "farmer") {
+      items = const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+        BottomNavigationBarItem(icon: Icon(Icons.history), label: "History"),
+        BottomNavigationBarItem(icon: Icon(Icons.lightbulb), label: "Tips"),
+        BottomNavigationBarItem(icon: Icon(Icons.analytics), label: "Reports"),
+        BottomNavigationBarItem(icon: Icon(Icons.headset_mic), label: "Support"),
+      ];
+    } else {
+      items = const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+        BottomNavigationBarItem(icon: Icon(Icons.history), label: "History"),
+        BottomNavigationBarItem(icon: Icon(Icons.lightbulb), label: "Tips"),
+        BottomNavigationBarItem(icon: Icon(Icons.headset_mic), label: "Support"),
+      ];
+    }
+
     return BottomNavigationBar(
       currentIndex: currentIndex,
       onTap: (index) => _onItemTapped(context, index),
       selectedItemColor: Colors.green,
       unselectedItemColor: Colors.grey,
       type: BottomNavigationBarType.fixed,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-        BottomNavigationBarItem(icon: Icon(Icons.history), label: "History"),
-        BottomNavigationBarItem(icon: Icon(Icons.lightbulb), label: "Tips"),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.help_outline),
-          label: "Support",
-        ),
-      ],
+      items: items,
     );
   }
 }
