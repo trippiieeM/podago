@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:podago/widgets/bottom_nav_bar.dart';
-import 'package:podago/services/pricing_service.dart'; // NEW
-import 'package:podago/utils/app_theme.dart'; // NEW
+import 'package:podago/services/pricing_service.dart';
+import 'package:podago/utils/app_theme.dart';
 
 class FarmerHistoryScreen extends StatefulWidget {
   final String farmerId;
@@ -15,10 +15,9 @@ class FarmerHistoryScreen extends StatefulWidget {
 }
 
 class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
-  // --- Professional Theme Colors ---
-  // Using AppTheme now
-
-  // --- Logic Variables (Preserved) ---
+  // --- Standardizing Colors to AppTheme ---
+  
+  // --- Logic Variables ---
   double _pricePerLiter = 45.0; 
   String _timeFilter = 'all'; 
   bool _isLoadingPrice = true;
@@ -28,6 +27,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     super.initState();
     _fetchCurrentMilkPrice();
   }
+  
   /// --- Fetch current milk price from admin system ---
   Future<void> _fetchCurrentMilkPrice() async {
     final price = await PricingService().getCurrentMilkPrice();
@@ -71,8 +71,24 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
 
       final feedDeductions = paymentsSnapshot.docs.where((doc) {
         final data = doc.data();
-        return data['type'] == 'feed_deduction' && data['status'] != 'processed';
+        return data['type'] == 'feed_deduction' && data['status'] != 'processed'; // Show only pending/active deductions here or all? Logic says != processed usually means active. But for history we might want all? 
+        // Logic check: Previously it was 'status' != 'processed'. Wait, usually processed means "done/paid". 
+        // If we want history, we should probably show ALL deductions? 
+        // But the previous code had `&& data['status'] != 'processed'`. 
+        // Let's stick to previous code logic to be safe, but "History" usually implies everything.
+        // However, `processPayment` creates a PAYMENT record. 
+        // Maybe these are separate "Deduction requests" vs "Deduction payments". 
+        // Let's trust the previous logic which filtered them. 
+        return true; // actually, for history, let's show ALL. 
+        // Wait, the previous code was: return data['type'] == 'feed_deduction' && data['status'] != 'processed';
+        // If I change it, I might break something. Let's look at the previous code again on line 74 of the original file.
+        // It says `return data['type'] == 'feed_deduction' && data['status'] != 'processed';`
+        // I will keep it identical to ensure I don't introduce a regression in logic I don't fully understand yet.
       }).toList();
+      
+      // Actually, checking line 74 again...
+      // `final feedDeductions = paymentsSnapshot.docs.where((doc) { ... return data['type'] == 'feed_deduction' && data['status'] != 'processed'; }).toList();`
+      // This is consistent. I will stick to it.
 
       final milkLogsQuery = FirebaseFirestore.instance.collection('milk_logs').where('farmerId', isEqualTo: widget.farmerId).orderBy('date', descending: true);
       final milkLogsSnapshot = await milkLogsQuery.get();
@@ -138,111 +154,223 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.kBackground,
-      appBar: AppBar(
-        title: const Text("Transactions"),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () { setState(() { _isLoadingPrice = true; }); _fetchCurrentMilkPrice(); },
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: AppTheme.kBackground,
+        appBar: AppBar(
+          title: const Text("History"),
+          elevation: 0,
+          bottom: const TabBar(
+            indicatorColor: AppTheme.kPrimaryGreen,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            tabs: [
+              Tab(text: "Milk Collections"),
+              Tab(text: "Transactions"),
+            ],
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () { setState(() { _isLoadingPrice = true; }); _fetchCurrentMilkPrice(); },
+            ),
+          ],
+        ),
+        body: _isLoadingPrice 
+            ? _buildLoadingState()
+            : FutureBuilder<Map<String, dynamic>>(
+                future: _fetchPaymentData(),
+                builder: (context, paymentSnapshot) {
+                  if (paymentSnapshot.connectionState == ConnectionState.waiting) return _buildLoadingState();
+                  if (paymentSnapshot.hasError) return _buildErrorState(paymentSnapshot.error.toString());
+  
+                  final paymentData = paymentSnapshot.data ?? { 'milkPayments': [], 'feedDeductions': [], 'milkLogs': [] };
+                  final paymentTotals = _calculatePaymentTotals(paymentData);
+  
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection("milk_logs").where("farmerId", isEqualTo: widget.farmerId).orderBy("date", descending: true).snapshots(),
+                    builder: (context, milkSnapshot) {
+                      if (milkSnapshot.connectionState == ConnectionState.waiting) return _buildLoadingState();
+                      final docs = milkSnapshot.hasData ? milkSnapshot.data!.docs : <DocumentSnapshot>[];
+                      final filteredLogs = _applyFilter(docs);
+  
+                      return TabBarView(
+                        children: [
+                          // --- Tab 1: Milk Collections ---
+                          _buildMilkCollectionsTab(filteredLogs),
+  
+                          // --- Tab 2: Financial Transactions ---
+                          _buildTransactionsTab(paymentData, paymentTotals),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+        bottomNavigationBar: BottomNavBar(currentIndex: 1, role: "farmer", farmerId: widget.farmerId),
+      ),
+    );
+  }
+
+  // --- HELPER: Group by Month ---
+  Map<String, List<DocumentSnapshot>> _groupDocumentsByMonth(List<DocumentSnapshot> docs) {
+    final Map<String, List<DocumentSnapshot>> groups = {};
+    for (var doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      // Handle 'date' (Milk) or 'createdAt' (Payments)
+      final Timestamp? timestamp = data['date'] ?? data['createdAt'];
+      if (timestamp == null) continue;
+
+      final date = timestamp.toDate();
+      final key = DateFormat('MMMM yyyy').format(date);
+
+      if (!groups.containsKey(key)) {
+        groups[key] = [];
+      }
+      groups[key]!.add(doc);
+    }
+    return groups;
+  }
+
+  // --- TABS ---
+
+  Widget _buildMilkCollectionsTab(List<DocumentSnapshot> filteredLogs) {
+    if (filteredLogs.isEmpty) return _buildEmptyState("No milk records found");
+
+    final groupedLogs = _groupDocumentsByMonth(filteredLogs);
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildPriceHeader(),
+          const SizedBox(height: 16),
+          _buildTimeFilter(),
+          const SizedBox(height: 20),
+          _buildSectionTitle("Milk Logs"),
+          const SizedBox(height: 12),
+          
+          ...groupedLogs.entries.map((entry) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildMonthHeader(entry.key),
+                ...entry.value.map((doc) => _buildMilkRecordCard(doc, 0)),
+                const SizedBox(height: 16), // Spacing between months
+              ],
+            );
+          }),
+          
+          const SizedBox(height: 40),
         ],
       ),
-      body: _isLoadingPrice 
-          ? _buildLoadingState()
-          : FutureBuilder<Map<String, dynamic>>(
-              future: _fetchPaymentData(),
-              builder: (context, paymentSnapshot) {
-                if (paymentSnapshot.connectionState == ConnectionState.waiting) return _buildLoadingState();
-                if (paymentSnapshot.hasError) return _buildErrorState(paymentSnapshot.error.toString());
+    );
+  }
 
-                final paymentData = paymentSnapshot.data ?? { 'milkPayments': [], 'feedDeductions': [], 'milkLogs': [] };
-                final paymentTotals = _calculatePaymentTotals(paymentData);
+  Widget _buildTransactionsTab(Map<String, dynamic> paymentData, Map<String, double> paymentTotals) {
+    final milkPayments = paymentData['milkPayments'] as List<DocumentSnapshot>;
+    final feedDeductions = paymentData['feedDeductions'] as List<DocumentSnapshot>;
+    
+    // Combine and Sort Transactions
+    final List<DocumentSnapshot> allTransactions = [...milkPayments, ...feedDeductions];
+    allTransactions.sort((a, b) {
+      final da = (a.data() as Map<String, dynamic>)['createdAt'] as Timestamp;
+      final db = (b.data() as Map<String, dynamic>)['createdAt'] as Timestamp;
+      return db.compareTo(da); // Descending
+    });
 
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection("milk_logs").where("farmerId", isEqualTo: widget.farmerId).orderBy("date", descending: true).snapshots(),
-                  builder: (context, milkSnapshot) {
-                    if (milkSnapshot.connectionState == ConnectionState.waiting) return _buildLoadingState();
-                    if (!milkSnapshot.hasData || milkSnapshot.data!.docs.isEmpty) return _buildEmptyState();
+    final hasTransactions = allTransactions.isNotEmpty;
+    final groupedTransactions = _groupDocumentsByMonth(allTransactions);
 
-                    final filteredLogs = _applyFilter(milkSnapshot.data!.docs);
-                    if (filteredLogs.isEmpty) return _buildEmptyState();
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+           // --- Financial Summary Grid ---
+          _buildSectionTitle("Financial Overview"),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildSummaryCard(
+                title: "Total Paid", 
+                value: "KES ${NumberFormat.compact().format(paymentTotals['totalMilkIncome'])}",
+                subtitle: "Realized Income",
+                icon: Icons.verified_user_outlined, 
+                color: AppTheme.kPrimaryGreen
+              )),
+              const SizedBox(width: 12),
+              Expanded(child: _buildSummaryCard(
+                title: "Deductions", 
+                value: "KES ${NumberFormat.compact().format(paymentTotals['totalFeedDeductions'])}", 
+                subtitle: "Feed Items",
+                icon: Icons.shopping_bag_outlined, 
+                color: Colors.redAccent
+              )),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildNetPendingCard(paymentTotals),
+          
+          const SizedBox(height: 24),
+          _buildSectionTitle("Transaction History"),
+          const SizedBox(height: 12),
 
-                    double totalLiters = filteredLogs.fold(0.0, (sum, log) {
-                      return sum + ((log.data() as Map<String, dynamic>)["quantity"] ?? 0).toDouble();
-                    });
-
-                    return SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildPriceHeader(),
-                          const SizedBox(height: 16),
-                          
-                          // --- Financial Summary Grid ---
-                          _buildSectionTitle("Financial Overview"),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(child: _buildSummaryCard(
-                                title: "Total Income", 
-                                value: "KES ${NumberFormat.compact().format(paymentTotals['totalMilkIncome'])}",
-                                subtitle: "Protected Earnings",
-                                icon: Icons.verified_user_outlined, 
-                                color: AppTheme.kPrimaryGreen
-                              )),
-                              const SizedBox(width: 12),
-                              Expanded(child: _buildSummaryCard(
-                                title: "Deductions", 
-                                value: "KES ${NumberFormat.compact().format(paymentTotals['totalFeedDeductions'])}", 
-                                subtitle: "Feed & Inputs",
-                                icon: Icons.shopping_bag_outlined, 
-                                color: Colors.redAccent
-                              )),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          _buildNetPendingCard(paymentTotals),
-                          
-                          const SizedBox(height: 24),
-                          
-                          // --- Filters ---
-                          _buildTimeFilter(),
-                          const SizedBox(height: 16),
-                          
-                          // --- Detailed History ---
-                          _buildSectionTitle("Transaction History"),
-                          const SizedBox(height: 12),
-                          
-                          // Admin Payments & Deductions
-                          if ((paymentData['milkPayments'] as List).isNotEmpty || (paymentData['feedDeductions'] as List).isNotEmpty)
-                             ...paymentData['milkPayments'].map((doc) => _buildPaymentRecordCard(doc, 0, 'milk_payment')),
-                             
-                          if ((paymentData['feedDeductions'] as List).isNotEmpty)
-                             ...paymentData['feedDeductions'].map((doc) => _buildPaymentRecordCard(doc, 0, 'feed_deduction')),
-
-                          // Milk Logs
-                          ...filteredLogs.asMap().entries.map((entry) => 
-                            _buildMilkRecordCard(entry.value, entry.key)
-                          ),
-
-                          const SizedBox(height: 80),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
+          if (!hasTransactions)
+            const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Center(child: Text("No financial transactions yet", style: TextStyle(color: Colors.grey))),
             ),
-      bottomNavigationBar: BottomNavBar(currentIndex: 1, role: "farmer", farmerId: widget.farmerId),
+
+          if (hasTransactions)
+            ...groupedTransactions.entries.map((entry) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildMonthHeader(entry.key),
+                  ...entry.value.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final type = data['type'] ?? 'milk_payment'; 
+                    return _buildPaymentRecordCard(doc, 0, type);
+                  }),
+                  const SizedBox(height: 16),
+                ],
+              );
+            }),
+              
+          const SizedBox(height: 40),
+        ],
+      ),
     );
   }
 
   // --- UI COMPONENTS ---
+  
+  Widget _buildMonthHeader(String monthYear) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, top: 4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppTheme.kPrimaryGreen.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          monthYear.toUpperCase(),
+          style: const TextStyle(
+            color: AppTheme.kPrimaryGreen,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            letterSpacing: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildPriceHeader() {
     return Container(
@@ -394,7 +522,7 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     final data = doc.data() as Map<String, dynamic>;
     final date = (data['createdAt'] ?? data['date'] as Timestamp).toDate();
     final amount = (data['amount'] ?? 0).toDouble();
-    final isDeduction = type == 'feed_deduction' || amount < 0;
+    final isDeduction = type == 'feed_deduction' || amount < 0; // Logic for deduction
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -501,14 +629,14 @@ class _FarmerHistoryScreenState extends State<FarmerHistoryScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return const Center(
+  Widget _buildEmptyState(String message) {
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.inbox, size: 60, color: Colors.grey),
-          SizedBox(height: 16),
-          Text("No records found", style: TextStyle(color: Colors.grey)),
+          const Icon(Icons.inbox, size: 60, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(message, style: const TextStyle(color: Colors.grey)),
         ],
       ),
     );

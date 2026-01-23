@@ -383,127 +383,175 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
             }
           }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. Welcome
-                Text("Welcome back, $_farmerName", style: AppTheme.displayMedium),
-                Text("Current Price: KES $_pricePerLiter/L", style: AppTheme.bodyMedium),
-                const SizedBox(height: 20),
 
-                // 2. Stats Grid
-                SizedBox(
-                  height: 150,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildSummaryCard(
-                          icon: Icons.water_drop,
-                          title: "Today",
-                          value: "${todayTotal.toStringAsFixed(1)}L",
-                          subtitle: "Daily yield",
-                          color: AppTheme.kPrimaryBlue,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildSummaryCard(
-                          icon: Icons.calendar_month,
-                          title: "Month",
-                          value: "${monthTotal.toStringAsFixed(0)}L",
-                          subtitle: "Total yield",
-                          color: AppTheme.kPrimaryGreen,
-                          isPrimary: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                // 3. Pending Payment Banner
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Colors.orange, Colors.deepOrangeAccent]),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+
+          // 🔹 Nested Stream for Deductions to calculate Net Pay
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection("payments")
+                .where("farmerId", isEqualTo: widget.farmerId)
+                .where("type", isEqualTo: "feed_deduction")
+                .snapshots(),
+            builder: (context, deductionSnapshot) {
+               double deductionTotal = 0;
+               if (deductionSnapshot.hasData) {
+                 for (var doc in deductionSnapshot.data!.docs) {
+                   final data = doc.data() as Map<String, dynamic>;
+                   if (data['status'] != 'processed') {
+                     deductionTotal += (data['amount'] ?? 0).toDouble().abs();
+                   }
+                 }
+               }
+               
+               final netPending = pendingTotal - deductionTotal;
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. Welcome
+                    Text("Welcome back, $_farmerName", style: AppTheme.displayMedium),
+                    Text("Current Price: KES $_pricePerLiter/L", style: AppTheme.bodyMedium),
+                    const SizedBox(height: 20),
+
+                    // 2. Stats Grid
+                    SizedBox(
+                      height: 150,
+                      child: Row(
                         children: [
-                          Text("Pending Payment", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                          Text("Awaiting Clearance", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          Expanded(
+                            child: _buildSummaryCard(
+                              icon: Icons.water_drop,
+                              title: "Today",
+                              value: "${todayTotal.toStringAsFixed(1)}L",
+                              subtitle: "Daily yield",
+                              color: AppTheme.kPrimaryBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildSummaryCard(
+                              icon: Icons.calendar_month,
+                              title: "Month",
+                              value: "${monthTotal.toStringAsFixed(0)}L",
+                              subtitle: "Total yield",
+                              color: AppTheme.kPrimaryGreen,
+                              isPrimary: true,
+                            ),
+                          ),
                         ],
                       ),
-                      Text("KES ${pendingTotal.toStringAsFixed(0)}", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 24),
-                const SizedBox(height: 24),
-                
-                // NEW: Quick Actions
-                _buildQuickActionsGrid(),
-
-                const SizedBox(height: 24),
-                // _buildFeedRequestCard(), // Removed in favor of Quick Action, or keep as "Recent Request Status"
-
-                const SizedBox(height: 30),
-                const Text("AI Forecast", style: AppTheme.titleLarge),
-                const SizedBox(height: 10),
-
-                FutureBuilder<Map<String, dynamic>>(
-                  future: MilkPredictor().predictMilkProduction(widget.farmerId),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const LinearProgressIndicator(); // Show something while loading
+                    ),
+                    const SizedBox(height: 16),
                     
-                    final data = snapshot.data!;
-                    final daily = data['daily'] as DailyPrediction;
-                    final weekly = data['weekly'] as WeeklyPrediction;
-                    final monthly = data['monthly'] as MonthlyPrediction;
-                    final yearly = data['yearly'] as YearlyPrediction;
+                    // 3. Pending Payment Banner (Enhanced)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Colors.orange, Colors.deepOrangeAccent]),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Net Pending Pay", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                  Text("After Deductions", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              Text("KES ${netPending.toStringAsFixed(0)}", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          if (deductionTotal > 0) ...[
+                            const SizedBox(height: 12),
+                            Container(height: 1, color: Colors.white24), // Divider
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text("Gross Milk Value", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                Text("KES ${pendingTotal.toStringAsFixed(0)}", style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text("Feed Deductions", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                Text("- KES ${deductionTotal.toStringAsFixed(0)}", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ]
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    const SizedBox(height: 24),
+                    
+                    // NEW: Quick Actions
+                    _buildQuickActionsGrid(),
 
-                    return GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.5,
-                      children: [
-                        _buildPredictionCard(title: "Tomorrow", value: "${daily.prediction.toStringAsFixed(1)} L", subtitle: "Conf: ${(daily.confidence*100).toInt()}%", trend: daily.trend, icon: Icons.wb_sunny, color: AppTheme.kPrimaryBlue),
-                        _buildPredictionCard(title: "Next Week", value: "${weekly.prediction.toStringAsFixed(0)} L", subtitle: "Estimate", trend: weekly.trend, icon: Icons.calendar_view_week, color: Colors.purple),
-                        _buildPredictionCard(title: "Next Month", value: "${monthly.prediction.toStringAsFixed(0)} L", subtitle: "Estimate", trend: monthly.trend, icon: Icons.calendar_month, color: Colors.orange),
-                        _buildPredictionCard(title: "Yearly", value: "${(yearly.prediction/1000).toStringAsFixed(1)}k L", subtitle: "Estimate", trend: yearly.trend, icon: Icons.analytics, color: Colors.teal),
-                      ],
-                    );
-                  },
+                    const SizedBox(height: 24),
+                    // _buildFeedRequestCard(), // Removed in favor of Quick Action, or keep as "Recent Request Status"
+
+                    const SizedBox(height: 30),
+                    const Text("AI Forecast", style: AppTheme.titleLarge),
+                    const SizedBox(height: 10),
+
+                    FutureBuilder<Map<String, dynamic>>(
+                      future: MilkPredictor().predictMilkProduction(widget.farmerId),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const LinearProgressIndicator(); // Show something while loading
+                        
+                        final data = snapshot.data!;
+                        final daily = data['daily'] as DailyPrediction;
+                        final weekly = data['weekly'] as WeeklyPrediction;
+                        final monthly = data['monthly'] as MonthlyPrediction;
+                        final yearly = data['yearly'] as YearlyPrediction;
+
+                        return GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 1.5,
+                          children: [
+                            _buildPredictionCard(title: "Tomorrow", value: "${daily.prediction.toStringAsFixed(1)} L", subtitle: "Conf: ${(daily.confidence*100).toInt()}%", trend: daily.trend, icon: Icons.wb_sunny, color: AppTheme.kPrimaryBlue),
+                            _buildPredictionCard(title: "Next Week", value: "${weekly.prediction.toStringAsFixed(0)} L", subtitle: "Estimate", trend: weekly.trend, icon: Icons.calendar_view_week, color: Colors.purple),
+                            _buildPredictionCard(title: "Next Month", value: "${monthly.prediction.toStringAsFixed(0)} L", subtitle: "Estimate", trend: monthly.trend, icon: Icons.calendar_month, color: Colors.orange),
+                            _buildPredictionCard(title: "Yearly", value: "${(yearly.prediction/1000).toStringAsFixed(1)}k L", subtitle: "Estimate", trend: yearly.trend, icon: Icons.analytics, color: Colors.teal),
+                          ],
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 30),
+                    const Text("Recent Transactions", style: AppTheme.titleLarge),
+                    const SizedBox(height: 10),
+                    
+                    if (logs.isEmpty)
+                      const Padding(padding: EdgeInsets.all(20), child: Center(child: Text("No records found")))
+                    else
+                      ...logs.take(5).map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final index = logs.indexOf(doc);
+                        return _buildMilkRecordCard(data, index);
+                      }).toList(),
+                      
+                    const SizedBox(height: 40),
+                  ],
                 ),
-
-                const SizedBox(height: 30),
-                const Text("Recent Transactions", style: AppTheme.titleLarge),
-                const SizedBox(height: 10),
-                
-                if (logs.isEmpty)
-                  const Padding(padding: EdgeInsets.all(20), child: Center(child: Text("No records found")))
-                else
-                  ...logs.take(5).map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final index = logs.indexOf(doc);
-                    return _buildMilkRecordCard(data, index);
-                  }).toList(),
-                  
-                const SizedBox(height: 40),
-              ],
-            ),
+              );
+            }
           );
         },
       ),
