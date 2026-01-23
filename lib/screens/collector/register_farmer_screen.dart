@@ -24,6 +24,7 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController phoneCtrl = TextEditingController();
+  final TextEditingController idCtrl = TextEditingController(text: "Loading...");
   final TextEditingController pinCtrl = TextEditingController();
   final TextEditingController locationCtrl = TextEditingController();
   final Connectivity _connectivity = Connectivity();
@@ -37,6 +38,29 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
     super.initState();
     _checkConnectivity();
     _setupConnectivityListener();
+    _fetchNextId();
+  }
+
+  Future<void> _fetchNextId() async {
+    if (!isOnline) {
+      setState(() => idCtrl.text = "Generated upon sync");
+      return;
+    }
+    
+    try {
+      final doc = await FirebaseFirestore.instance.collection("counters").doc("farmers").get();
+      if (doc.exists) {
+        final int current = doc.data()?['currentSequence'] ?? 0;
+        final int next = current + 1;
+        if (mounted) {
+           setState(() => idCtrl.text = "PC${next.toString().padLeft(5, '0')}");
+        }
+      } else {
+        if (mounted) setState(() => idCtrl.text = "PC00001");
+      }
+    } catch (e) {
+      if (mounted) setState(() => idCtrl.text = "Error fetching ID");
+    }
   }
 
   Future<void> _checkConnectivity() async {
@@ -57,6 +81,9 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
       }
       if (connected) {
         _syncOfflineFarmers();
+        _fetchNextId();
+      } else {
+        setState(() => idCtrl.text = "Generated upon sync");
       }
     });
   }
@@ -111,25 +138,50 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
         return;
       }
 
-      final onlineData = Map<String, dynamic>.from(farmerData);
-      onlineData.remove('offlineTimestamp');
-      onlineData.remove('isOffline');
-      onlineData['synced'] = true;
-
-      await FirebaseFirestore.instance.collection("users").add(onlineData);
-      _showSuccessSnackBar("Farmer registered successfully!");
-      _clearFormAndNavigate();
+      final newId = await _registerWithTransaction(farmerData);
+      
+      _showSuccessDialog(newId);
     } catch (e) {
       print("Online registration failed, falling back to offline: $e");
       await _registerOffline(farmerData);
     }
   }
 
+  Future<String> _registerWithTransaction(Map<String, dynamic> farmerData) async {
+    return await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final counterRef = FirebaseFirestore.instance.collection("counters").doc("farmers");
+      final counterDoc = await transaction.get(counterRef);
+
+      if (!counterDoc.exists) {
+        throw Exception("Counter not initialized");
+      }
+
+      final int currentSeq = counterDoc.data()?['currentSequence'] ?? 0;
+      final int newSeq = currentSeq + 1;
+
+      transaction.update(counterRef, {'currentSequence': newSeq});
+
+      final String newId = "PC${newSeq.toString().padLeft(5, '0')}";
+
+      final onlineData = Map<String, dynamic>.from(farmerData);
+      onlineData.remove('offlineTimestamp');
+      onlineData.remove('isOffline');
+      onlineData['synced'] = true;
+      onlineData['id'] = newId;
+      onlineData['farmerId'] = newId;
+      onlineData['updatedAt'] = DateTime.now().toIso8601String();
+
+      final newDocRef = FirebaseFirestore.instance.collection("users").doc(newId);
+      transaction.set(newDocRef, onlineData);
+      
+      return newId;
+    });
+  }
+
   Future<void> _registerOffline(Map<String, dynamic> farmerData) async {
     try {
       await _saveFarmerOffline(farmerData);
-      _showSuccessSnackBar("Farmer registered offline! Data will sync when online.");
-      _clearFormAndNavigate();
+      _showOfflineSuccessDialog();
     } catch (e) {
       _showErrorSnackBar("Offline registration failed: ${e.toString()}");
       setState(() => isLoading = false);
@@ -187,13 +239,7 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
               .get();
 
           if (existingFarmers.docs.isEmpty) {
-            final onlineData = Map<String, dynamic>.from(farmerData);
-            onlineData.remove('offlineTimestamp');
-            onlineData.remove('isOffline');
-            onlineData['synced'] = true;
-            onlineData['updatedAt'] = DateTime.now().toIso8601String();
-            
-            await FirebaseFirestore.instance.collection("users").add(onlineData);
+            await _registerWithTransaction(farmerData);
             syncedCount++;
           }
         } catch (e) {
@@ -231,14 +277,75 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating));
   }
 
+  void _showSuccessDialog(String farmerId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Registration Successful"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle, color: kPrimaryColor, size: 60),
+            const SizedBox(height: 16),
+            const Text("Farmer registered! Please write down this ID:", textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            SelectableText(
+              farmerId,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kPrimaryColor),
+            ),
+            const SizedBox(height: 8),
+            const Text("This ID is required for the farmer to log in.", style: TextStyle(fontSize: 12, color: kTextSecondary)),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx); // Close dialog
+              _clearFormAndNavigate();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: kPrimaryColor),
+            child: const Text("Done"),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _showOfflineSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Saved Offline"),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.save_alt, color: Colors.orange, size: 60),
+            SizedBox(height: 16),
+            Text("Farmer data saved locally.", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 8),
+            Text("Connect to the internet to sync and generate the Farmer ID.", textAlign: TextAlign.center),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+               Navigator.pop(ctx); // Close dialog
+               _clearFormAndNavigate();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text("OK"),
+          )
+        ],
+      ),
+    );
+  }
+
   void _clearFormAndNavigate() {
     _formKey.currentState?.reset();
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        setState(() => isLoading = false);
-        Navigator.pop(context);
-      }
-    });
+    setState(() => isLoading = false);
+    Navigator.pop(context);
   }
 
   String? _validatePhone(String? value) {
@@ -265,6 +372,7 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
     phoneCtrl.dispose();
     pinCtrl.dispose();
     locationCtrl.dispose();
+    idCtrl.dispose();
     super.dispose();
   }
 
@@ -372,6 +480,14 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
             const Text("Farmer Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextPrimary)),
             const SizedBox(height: 20),
             
+            _buildInputField(
+              idCtrl, 
+              "Farmer ID (Next Available)", 
+              Icons.badge_outlined,
+              enabled: false
+            ),
+            const SizedBox(height: 16),
+            
             _buildInputField(nameCtrl, "Full Name", Icons.person_outline, validator: (v) => v!.isEmpty ? "Required" : null),
             const SizedBox(height: 16),
             
@@ -429,10 +545,12 @@ class _RegisterFarmerScreenState extends State<RegisterFarmerScreen> {
     {bool isPassword = false, 
     TextInputType? keyboardType, 
     String? Function(String?)? validator,
-    String? helperText}
+    String? helperText,
+    bool enabled = true}
   ) {
     return TextFormField(
       controller: controller,
+      enabled: enabled,
       obscureText: isPassword && obscurePin,
       keyboardType: keyboardType,
       validator: validator,

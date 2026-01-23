@@ -42,26 +42,32 @@ class _LoginScreenState extends State<LoginScreen> {
   // 1. LOGIC SECTION
   // ===========================================================================
 
-  /// Farmer login with name + PIN
+  /// Farmer login with ID + PIN
   Future<void> _loginFarmer() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => isLoading = true);
 
     try {
+      final farmerIdInput = _nameController.text.trim();
+      final pin = _pinController.text.trim();
+      
+      // Query by farmerId field instead of document ID
       final query = await FirebaseFirestore.instance
           .collection("users")
           .where("role", isEqualTo: "farmer")
-          .where("name", isEqualTo: _nameController.text.trim())
-          .where("pin", isEqualTo: _pinController.text.trim())
+          .where("farmerId", isEqualTo: farmerIdInput)
+          .where("pin", isEqualTo: pin)
           .limit(1)
           .get();
 
       if (query.docs.isNotEmpty) {
         final farmerDoc = query.docs.first;
+        final data = farmerDoc.data();
+        
         await SimpleStorageService.savePinSession(
-          userId: farmerDoc.id,
-          userName: _nameController.text.trim(),
+          userId: farmerDoc.id, // Keep using doc ID for internal logic
+          userName: data['name'] ?? farmerIdInput,
           role: 'farmer',
         );
         
@@ -72,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => FarmerDashboard(farmerId: farmerDoc.id)));
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid name or PIN"), backgroundColor: Colors.red));
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid ID or PIN"), backgroundColor: Colors.red));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login error: ${e.toString()}"), backgroundColor: Colors.red));
@@ -124,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) setState(() => isLoading = false);
   }
 
-  String? _validateName(String? value) => (value == null || value.isEmpty) ? 'Please enter your name' : null;
+  String? _validateName(String? value) => (value == null || value.isEmpty) ? 'Please enter Farmer ID' : null;
   String? _validatePIN(String? value) => (value == null || value.length < 4) ? 'PIN must be 4 digits' : null;
   String? _validateEmail(String? value) => (value == null || !value.contains('@')) ? 'Invalid email' : null;
   String? _validatePassword(String? value) => (value == null || value.length < 6) ? 'Password too short' : null;
@@ -182,7 +188,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Column(
                         children: [
                           if (isFarmer) ...[
-                            _buildInputField(_nameController, "Full Name", Icons.person_outline, validator: _validateName),
+                            _buildInputField(_nameController, "Farmer ID (e.g. PC00001)", Icons.badge_outlined, validator: _validateName),
                             const SizedBox(height: 20),
                             _buildInputField(
                               _pinController, 
